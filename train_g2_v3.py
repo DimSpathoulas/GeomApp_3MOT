@@ -489,6 +489,10 @@ model = Modules()
 model.to(device)
 # model.load_state_dict(torch.load('g2_trained_model.pth'))  # for save
 # DEN NOMIZO OTI EXEI NOHMA AYTO
+# for param in model.g1.parameters(): this shouldnt work
+#     param.requires_grad = False
+# for param in model.g2.parameters(): this shouldnt work
+#     param.requires_grad = False
 for param in model.g3.parameters():
     param.requires_grad = False
 for param in model.g4.parameters():
@@ -700,6 +704,7 @@ class AB3DMOT(object):
         if det_trk_matrix.shape[1] > 0:
             # NOTES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
             # -1. TORA TO GRAPH ETSI OPOS TO EXO KANEI EINAI SOSTO??? GIATI YPARXEI ENA DISCONTINUE STO G1 KAI G2
+            # mallon den einai - line 492
             # 0. SE KAPOIA POLY SYGKEKRIMENA DETS EINAI POLY EKTOS TO ORIENTATION KAI TA DIMS
             # ETSI AN KAI YPARXEI SYSXETISH DEN GINONTAI TRACK - TAYTOXRONA EGO TO EXO KANEI NA TA PERNAEI STO K
             # GIA TO LEARNING TOY D_FEAT
