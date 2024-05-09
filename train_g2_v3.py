@@ -401,6 +401,7 @@ class Modules(nn.Module):
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
+            nn.ReLU(),
             nn.Linear(128, 1)
         )
 
@@ -435,6 +436,9 @@ class Modules(nn.Module):
             nn.Sigmoid()
         )
 
+    # PREPEI TO G1 KAI G2 NA MPOYN STO IDIO FORWARD FUNC OSTE NA EINAI CONNECTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    # POS META UA TA TREJO XORISTA????????
+    # MALLON UA PREPEI NA FTIAJO JEXORISTA ANAMETAJY TOYS NANE. KAI 3 DIAFORETIKA FUNCTIONS GIA KATHE TI POY THELO
     def G1(self, F2D, F3D, cam_onehot_vector):
 
         F2D = torch.tensor(F2D).to(device)
@@ -489,10 +493,10 @@ model = Modules()
 model.to(device)
 # model.load_state_dict(torch.load('g2_trained_model.pth'))  # for save
 # DEN NOMIZO OTI EXEI NOHMA AYTO
-# for param in model.g1.parameters(): this shouldnt work
-#     param.requires_grad = False
-# for param in model.g2.parameters(): this shouldnt work
-#     param.requires_grad = False
+for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
+    param.requires_grad = True
+for param in model.g2.parameters():  # OPOS AYTO
+    param.requires_grad = True
 for param in model.g3.parameters():
     param.requires_grad = False
 for param in model.g4.parameters():
@@ -642,8 +646,6 @@ class AB3DMOT(object):
                                                                  dets_all['current_gts'],
                                                                  dets_all['previous_gts'])
 
-        # print('\n\n\n\n', self.tracking_name, prev_gts, '\ncurr gts', curr_gts)
-
         print_debug = False
 
         dets = dets[:, self.my_order]
@@ -680,6 +682,9 @@ class AB3DMOT(object):
         trks_S = [np.matmul(np.matmul(tracker.kf.H, tracker.kf.P), tracker.kf.H.T) + tracker.kf.R for tracker in
                   self.trackers]
 
+
+        print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
+
         det_feats_module = model.G1(feats, pcbs, cam_vecs)
         det_feats = det_feats_module.detach().cpu().numpy()
 
@@ -703,8 +708,9 @@ class AB3DMOT(object):
 
         if det_trk_matrix.shape[1] > 0:
             # NOTES !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            # PROSOXHHHHHHHHHHHHHHHHH !!!!!!!!!!!!!!!! TO G1 DEN KANEI TRAIN GIA KAPOIO LOGO :(
+            # MONO TO G2 KANEI - ARA DEN EINAI CONNECTED TA MODULES
             # -1. TORA TO GRAPH ETSI OPOS TO EXO KANEI EINAI SOSTO??? GIATI YPARXEI ENA DISCONTINUE STO G1 KAI G2
-            # mallon den einai - line 492
             # 0. SE KAPOIA POLY SYGKEKRIMENA DETS EINAI POLY EKTOS TO ORIENTATION KAI TA DIMS
             # ETSI AN KAI YPARXEI SYSXETISH DEN GINONTAI TRACK - TAYTOXRONA EGO TO EXO KANEI NA TA PERNAEI STO K
             # GIA TO LEARNING TOY D_FEAT
@@ -968,15 +974,11 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         # mhpos prepei na ta kano flatten prota ????
                         loss = criterion(D, K)  # den jero an einai sosto ayto etsi....
-                        loss.backward()
 
                         # # EDO ???
+                        loss.backward()
                         optimizer.zero_grad()
                         optimizer.step()
-
-                    # # EDO ???
-                    # optimizer.zero_grad()
-                    # optimizer.step()
 
                 cycle_time = time.time() - start_time
                 total_time += cycle_time
@@ -984,6 +986,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                 u = u + 1
 
                 # # EDO ???
+                # loss.backward()
                 # optimizer.zero_grad()
                 # optimizer.step()
 
