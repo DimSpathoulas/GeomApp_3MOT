@@ -692,7 +692,7 @@ class AB3DMOT(object):
         D_mah_module = torch.tensor(D_mah).to(device)
 
         trks_feats_module = torch.tensor(trks_feats).to(device)
-        det_trk_matrix = expand_and_concat(det_feats_module, trks_feats_module)
+        det_trk_matrix = expand_and_concat(det_feats_module, trks_feats_module)  # mallon edo einai to provlhma
 
         # vres ena pio omorfo tropo gia olo ayto
         D_feat = np.empty((0, 0))
