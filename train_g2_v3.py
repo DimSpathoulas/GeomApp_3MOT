@@ -367,7 +367,7 @@ def associate_detections_to_trackers(matched_indices, distance_matrix, dets, trk
 
 
 def expand_and_concat(det_feats, trk_feats):
-    matrix = np.empty((det_feats.shape[0], trk_feats.shape[0],
+    matrix = torch.empty((det_feats.shape[0], trk_feats.shape[0],
                        2 * det_feats.shape[1],
                        det_feats.shape[2], det_feats.shape[3]))
 
@@ -376,7 +376,7 @@ def expand_and_concat(det_feats, trk_feats):
 
     for i in range(det_feats.shape[0]):
         for j in range(trk_feats.shape[0]):
-            conc_features = np.concatenate((det_feats[i], trk_feats[j]))
+            conc_features = torch.concatenate((det_feats[i], trk_feats[j]))
             matrix[i, j] = conc_features
 
     return matrix
@@ -417,11 +417,11 @@ class Modules(nn.Module):
 
         # DISTANCE COMBINATION MODULE 2
         self.g3 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(256 * 3 * 3, 256),
             nn.Linear(256, 128),
+            nn.ReLU(),
             nn.Linear(128, 2)
         )
 
@@ -458,7 +458,7 @@ class Modules(nn.Module):
     def G2(self, x):
 
         x = torch.tensor(x, dtype=torch.float32).to(device)
-        y = torch.empty(x.shape[0], x.shape[1])
+        y = torch.empty(x.shape[0], x.shape[1]).to(device)
 
         for i, d in enumerate(x):
             ms = torch.cat([dt.unsqueeze(0) for dt in d], dim=0)
@@ -494,7 +494,7 @@ model.to(device)
 # model.load_state_dict(torch.load('g2_trained_model.pth'))  # for save
 # DEN NOMIZO OTI EXEI NOHMA AYTO
 for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
-    param.requires_grad = True
+    param.requires_grad = False
 for param in model.g2.parameters():  # OPOS AYTO
     param.requires_grad = True
 for param in model.g3.parameters():
@@ -688,17 +688,11 @@ class AB3DMOT(object):
         det_feats_module = model.G1(feats, pcbs, cam_vecs)
         det_feats = det_feats_module.detach().cpu().numpy()
 
-        # print(f'\n\nframe count for {self.tracking_name}', self.frame_count)
-        # print(f'dets {dets.shape}', dets)
-        # print(f'trks {trks.shape}', trks)
-        # print(f'det_Feats {det_feats}')
-        # print(f'trks_feats {trks_feats.shape}', trks_feats)
-
         D_mah = mahalanobis_distance(dets=dets, trks=trks, trks_S=trks_S)
+        D_mah_module = torch.tensor(D_mah).to(device)
 
-        det_trk_matrix = expand_and_concat(det_feats, trks_feats)
-
-        # print(det_feats.shape, trks_feats.shape, det_trk_matrix.shape, self.tracking_name)
+        trks_feats_module = torch.tensor(trks_feats).to(device)
+        det_trk_matrix = expand_and_concat(det_feats_module, trks_feats_module)
 
         # vres ena pio omorfo tropo gia olo ayto
         D_feat = np.empty((0, 0))
@@ -724,9 +718,13 @@ class AB3DMOT(object):
             # TORA MATHAINEI POS NA MHN KANEI LATHOS
             # EMEIS THELOUME NA MATHAINEI NA KANEI SOSTO DET TRACK ASSOCIATION
             # 6. TO BCELOOS DEXETAI MATRIXES ?? H MHPOS KALYTERA NA DOYME TO nn.CrossEntropyloss()
+
             D_feat_module = model.G2(det_trk_matrix)
-            D_feat = D_feat_module.detach().cpu().numpy()
-            D = D_feat + D_mah
+
+            # D_feat = D_feat_module.detach().cpu().numpy()
+
+            D_module = D_feat_module + D_mah_module
+            D = D_module.detach().cpu().numpy()
 
             K = construct_K_matrix(distance_matrix=D, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
 
