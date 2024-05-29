@@ -1,3 +1,3 @@
 # g2_train
 
-sto train_g2_v3 ta exo syndesei ola amesa ( xoris na ta metatrepso se numpy prota ). To idio lathos paramenei ostoso me to G1 na mhn kanei train
+sto v4 ta exo theoritika syndesei ola amesa ostoso den yparxei grad sta det_feats kai trk_feats
