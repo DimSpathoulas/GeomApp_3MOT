@@ -389,10 +389,9 @@ class Modules(nn.Module):
 
         # FEATURE FUSION MODULE
         self.g1 = nn.Sequential(  # this is G1
-            nn.Linear(1024 + 6, 1536),
+            nn.Linear(1030, 1536),
             nn.ReLU(),
-            nn.Linear(1536, 4608),
-            # nn.ReLU()  # thelei pali relu?
+            nn.Linear(1536, 4608)
         )
 
         # DISTANCE COMBINATION MODULE 1
@@ -404,16 +403,6 @@ class Modules(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 1)
         )
-
-        # # POIO APO TA DYO ?????
-        # self.g2 = nn.Sequential(
-        #     nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=1),
-        #     nn.ReLU(),
-        #     nn.Flatten(),  # newly added
-        #     nn.Linear(256 * 3 * 3, 256),
-        #     nn.Linear(256, 128),
-        #     nn.Linear(128, 1)
-        # )
 
         # DISTANCE COMBINATION MODULE 2
         self.g3 = nn.Sequential(
@@ -441,9 +430,9 @@ class Modules(nn.Module):
     # MALLON UA PREPEI NA FTIAJO JEXORISTA ANAMETAJY TOYS NANE. KAI 3 DIAFORETIKA FUNCTIONS GIA KATHE TI POY THELO
     def G1(self, F2D, F3D, cam_onehot_vector):
 
-        F2D = torch.tensor(F2D).to(device)
-        F3D = torch.tensor(F3D).to(device)
-        cam_onehot_vector = torch.tensor(cam_onehot_vector).to(device)
+        F2D = torch.tensor(F2D, dtype=torch.float32).to(device)
+        F3D = torch.tensor(F3D, dtype=torch.float32).to(device)
+        cam_onehot_vector = torch.tensor(cam_onehot_vector, dtype=torch.float32).to(device)
 
         fused = torch.cat((F2D, cam_onehot_vector), dim=1)
 
@@ -494,7 +483,7 @@ model.to(device)
 model.load_state_dict(torch.load('g2_trained_model_dummy.pth', map_location=device))
 
 for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
-    param.requires_grad = False
+    param.requires_grad = True
 for param in model.g2.parameters():  # OPOS AYTO
     param.requires_grad = False
 for param in model.g3.parameters():
@@ -675,7 +664,7 @@ class AB3DMOT(object):
         if self.features:
             trks_feats = torch.stack([feat for feat in self.features], dim=0)
         else:
-            trks_feats = torch.empty((0, 0)).to(device)
+            trks_feats = torch.empty((0, 0))
 
         to_del = []
         ret = []
@@ -702,7 +691,7 @@ class AB3DMOT(object):
 
         # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
 
-        det_feats = model.G1(feats, pcbs, cam_vecs)
+        det_feats = model.G1(feats, pcbs, cam_vecs).to(device)
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
@@ -722,7 +711,8 @@ class AB3DMOT(object):
             a_mod = a_mod.to(device)
             b_mod = b_mod.to(device)
             D_mah_module = torch.tensor(D_mah).to(device)
-            D_mod = D_mah_module + (a_mod * (D_feat_module - (0.5 + b_mod)))  # final D
+            point_five = torch.tensor(0.5).to(device)
+            D_mod = D_mah_module + (a_mod * (D_feat_module - (point_five + b_mod)))  # final D
 
             D = D_mod.detach().cpu().numpy()
 
@@ -971,15 +961,22 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         loss.backward()
 
-                        for param in model.g1.parameters():  # edo 4
-                            if param.grad is not None:
-                                print("Gradients of G1 parameters exist.")
-                            else:
-                                print("mioay")
+                        for name, param in model.named_parameters():
+                            if param.requires_grad:
+                                if param.grad is not None:
+                                    print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                                else:
+                                    print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
-                        for param in model.g3.parameters():  # edo 6 giati
-                            if param.grad is not None:
-                                print("Gradients of G3 parameters exist.")
+                        # for param in model.g1.parameters():  # edo 4
+                        #     if param.grad is not None:
+                        #         print("Gradients of G1 parameters exist.")
+                        #     else:
+                        #         print("mioay")
+                        #
+                        # for param in model.g3.parameters():  # edo 6 giati
+                        #     if param.grad is not None:
+                        #         print("Gradients of G3 parameters exist.")
 
                         optimizer.zero_grad()
                         optimizer.step()
