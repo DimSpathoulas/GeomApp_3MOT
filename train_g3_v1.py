@@ -367,7 +367,7 @@ def associate_detections_to_trackers(matched_indices, distance_matrix, dets, trk
 
 
 def expand_and_concat(det_feats, trk_feats):
-    matrix = np.empty((det_feats.shape[0], trk_feats.shape[0],
+    matrix = torch.empty((det_feats.shape[0], trk_feats.shape[0],
                        2 * det_feats.shape[1],
                        det_feats.shape[2], det_feats.shape[3]))
 
@@ -376,7 +376,7 @@ def expand_and_concat(det_feats, trk_feats):
 
     for i in range(det_feats.shape[0]):
         for j in range(trk_feats.shape[0]):
-            conc_features = np.concatenate((det_feats[i], trk_feats[j]))
+            conc_features = torch.concatenate((det_feats[i], trk_feats[j]))
             matrix[i, j] = conc_features
 
     return matrix
@@ -492,10 +492,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
 model.load_state_dict(torch.load('g2_trained_model_dummy.pth', map_location=device))
-# model.load_state_dict(torch.load('g2_trained_model.pth'))  # for save
-# DEN NOMIZO OTI EXEI NOHMA AYTO
+
 for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
-    param.requires_grad = True
+    param.requires_grad = False
 for param in model.g2.parameters():  # OPOS AYTO
     param.requires_grad = False
 for param in model.g3.parameters():
@@ -609,8 +608,6 @@ def PNP_NET_loss(T=11, C_contr=6, C_pos=3, C_neg=3, distance_matrix=None, K=None
 
     L_coef = L_contr + L_pos + L_neg  # to kano minimize ayto??
 
-    print(L_coef)
-
     return L_coef
 
 
@@ -675,7 +672,10 @@ class AB3DMOT(object):
         # !!!!!!!!!! EDO YPHRXE ENA PERIERGO DEBUGGING ME ENA SCENE SYGKEKRIMENO - MALLON MPOREI KAI SAN DEIGMA
 
         trks = np.zeros((len(self.trackers), 7))  # N x 7
-        trks_feats = np.array(self.features)
+        if self.features:
+            trks_feats = torch.stack([feat for feat in self.features], dim=0)
+        else:
+            trks_feats = torch.empty((0, 0)).to(device)
 
         to_del = []
         ret = []
@@ -698,24 +698,21 @@ class AB3DMOT(object):
 
         trks_S = [np.matmul(np.matmul(tracker.kf.H, tracker.kf.P), tracker.kf.H.T) + tracker.kf.R for tracker in
                   self.trackers]
-
-        print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-
-        det_feats_module = model.G1(feats, pcbs, cam_vecs)
-        det_feats = det_feats_module.detach().cpu().numpy()
-
         D_mah = mahalanobis_distance(dets=dets, trks=trks, trks_S=trks_S)
+
+        # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
+
+        det_feats = model.G1(feats, pcbs, cam_vecs)
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
         # print(det_feats.shape, trks_feats.shape, det_trk_matrix.shape, self.tracking_name)
 
         # vres ena pio omorfo tropo gia olo ayto
-        D_feat = np.empty((0, 0))
         D_feat_module = None
-        K = np.zeros_like(D_feat)
-        D = np.zeros_like(D_feat)
-        loss = 0.0
+        K = np.empty((0, 0))
+        D = np.empty((0, 0))
+        loss = torch.tensor(0.).to(device)
 
         if det_trk_matrix.shape[1] > 0:
 
@@ -732,6 +729,7 @@ class AB3DMOT(object):
             K = construct_K_matrix(distance_matrix=D, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
 
             loss = PNP_NET_loss(distance_matrix=D_mod, K=K)
+            # print(loss)
 
         # edo D_mah h D ???
         matched_indexes = greedy_match(D)
@@ -970,7 +968,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         if D.shape[0] == 0:
                             continue
-                        print(loss)
+
                         loss.backward()
 
                         for param in model.g1.parameters():  # edo 4
@@ -979,7 +977,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                             else:
                                 print("mioay")
 
-                        for param in model.g2.parameters():  # edo 6 giati
+                        for param in model.g3.parameters():  # edo 6 giati
                             if param.grad is not None:
                                 print("Gradients of G3 parameters exist.")
 
