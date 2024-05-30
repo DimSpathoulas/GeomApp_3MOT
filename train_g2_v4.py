@@ -568,26 +568,6 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
     return K
 
 
-# class TrackFeaturesManager:
-#     def __init__(self, network_graph):
-#         self.network_graph = network_graph
-#         self.track_feats_mod = []
-#
-#     def add_track_feat(self, track_feat):
-#         self.track_feats_mod.append(track_feat)
-#         node_id = len(self.track_feats_mod) - 1
-#         self.network_graph.add_node(node_id, feature=track_feat)
-#
-#     def remove_track_feat(self, index):
-#         if index < len(self.track_feats_mod):
-#             track_feat = self.track_feats_mod.pop(index)
-#             self.network_graph.remove_node(index)
-#             # Update node ids in the graph to maintain consistency
-#             for i in range(index, len(self.track_feats_mod)):
-#                 self.network_graph = nx.relabel_nodes(self.network_graph, {i + 1: i})
-#
-
-
 class AB3DMOT(object):
     def __init__(self, max_age=2, min_hits=3, tracking_name='car'):
         """
