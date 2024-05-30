@@ -499,9 +499,9 @@ for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!
 for param in model.g2.parameters():  # OPOS AYTO
     param.requires_grad = True
 for param in model.g3.parameters():
-    param.requires_grad = False
+    param.requires_grad = True
 for param in model.g4.parameters():
-    param.requires_grad = False
+    param.requires_grad = True
 
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
 # criterion = nn.BCELoss()
@@ -662,8 +662,8 @@ class AB3DMOT(object):
                 to_del.append(t)
 
         for t in reversed(to_del):
-            self.trackers.pop(t)
 
+            self.trackers.pop(t)
             self.features.pop(t)
 
         if print_debug:
@@ -673,17 +673,16 @@ class AB3DMOT(object):
         trks_S = [np.matmul(np.matmul(tracker.kf.H, tracker.kf.P), tracker.kf.H.T) + tracker.kf.R for tracker in
                   self.trackers]
 
-        # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-
-
-        det_feats = model.G1(feats, pcbs, cam_vecs)
-
-
-
         D_mah = mahalanobis_distance(dets=dets, trks=trks, trks_S=trks_S)
         D_mah_module = torch.tensor(D_mah).to(device)
 
+        # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
+
+        det_feats = model.G1(feats, pcbs, cam_vecs)
+
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
+
+        print('kai ayto connected einai', det_trk_matrix.grad_fn)
 
         D_feat = np.empty((0, 0))
         D_feat_module = None
@@ -693,8 +692,6 @@ class AB3DMOT(object):
         if det_trk_matrix.shape[1] > 0:
 
             D_feat_module = model.G2(det_trk_matrix)
-
-            # D_feat = D_feat_module.detach().cpu().numpy()
 
             D_module = D_feat_module + D_mah_module
             D = D_module.detach().cpu().numpy()
@@ -947,20 +944,28 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         K = torch.tensor(K).to(device)
 
                         # mhpos prepei na ta kano flatten prota ????
-                        loss = criterion(D, K)  # den jero an einai sosto ayto etsi....
 
-                        # # EDO ???
+                        loss = criterion(D, K)  # den jero an einai sosto ayto etsi....
+                        print(loss)
+
                         loss.backward()
 
-                        for param in model.g1.parameters():  # edo 4
-                            if param.grad is not None:
-                                print("Gradients of G1 parameters exist.")
-                            else:
-                                print("mioay")
+                        for name, param in model.named_parameters():
+                            if param.requires_grad:
+                                if param.grad is not None:
+                                    print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                                else:
+                                    print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
-                        for param in model.g2.parameters():  # edo 6 giati
-                            if param.grad is not None:
-                                print("Gradients of G2 parameters exist.")
+                        # for param in model.g1.parameters():  # edo 4
+                        #     if param.grad is not None:
+                        #         print("Gradients of G1 parameters exist.")
+                        #     else:
+                        #         print("mioay")
+                        #
+                        # for param in model.g2.parameters():  # edo 6 giati
+                        #     if param.grad is not None:
+                        #         print("Gradients of G2 parameters exist.")
 
                         optimizer.zero_grad()
                         optimizer.step()
