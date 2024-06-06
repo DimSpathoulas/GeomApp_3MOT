@@ -24,7 +24,6 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-from torchviz import make_dot
 
 NUSCENES_TRACKING_NAMES = [
     'bicycle',
@@ -426,9 +425,6 @@ class Modules(nn.Module):
             nn.Sigmoid()
         )
 
-    # PREPEI TO G1 KAI G2 NA MPOYN STO IDIO FORWARD FUNC OSTE NA EINAI CONNECTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # POS META UA TA TREJO XORISTA????????
-    # MALLON UA PREPEI NA FTIAJO JEXORISTA ANAMETAJY TOYS NANE. KAI 3 DIAFORETIKA FUNCTIONS GIA KATHE TI POY THELO
     def G1(self, F2D, F3D, cam_onehot_vector):
 
         F2D = torch.tensor(F2D, dtype=torch.float32).to(device)
@@ -490,11 +486,12 @@ for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!
 for param in model.g2.parameters():  # OPOS AYTO
     param.requires_grad = False
 for param in model.g3.parameters():
-    param.requires_grad = True
-for param in model.g4.parameters():
     param.requires_grad = False
+for param in model.g4.parameters():
+    param.requires_grad = True
 
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
+criterion = nn.BCELoss()
 EPOCHS = 2
 
 
@@ -521,19 +518,10 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
     # dist_m[0,1] is dets[0] and trks[1]
     # etc
 
-    # mhpos yparxei pio aplos tropos?
     K = np.ones_like(distance_matrix)
     d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
     t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
 
-    # print(dets, '\n', curr_gts)
-    # print(d_idx, d_gt_idx)
-
-    # print('\n\n', trks, '\n', prev_gts)
-    # print(t_idx, t_gt_idx)
-
-    # SE MERIKA EINAI ARKETA EKTOS TO ORIENTATION KAI TA DIMS AN KAI EXEI KANEI KALO DETECT TA CENTERS
-    # DEN JERO POS NA TO LYSO AYTO EKTOS APO TO NA AYJHSO TO THRESH STO CENTERPOINT
     for d, gt_d in zip(d_idx, d_gt_idx):
         for t, gt_t in zip(t_idx, t_gt_idx):
 
@@ -548,8 +536,6 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
 
             if curr_gts[gt_d][7] == prev_gts[gt_t][7] and dist_1 <= threshold and dist_2 <= threshold:
                 K[d, t] = 0
-
-    # print(K)
 
     return K
 
@@ -569,15 +555,7 @@ def retrieve_pairs(K):
     return pos, neg
 
 
-def PNP_NET_loss(T=11, C_contr=6, C_pos=3, C_neg=3, distance_matrix=None, K=None):
-
-    # TI SHMAINEI AGGREGATE DISTANCE SE EMAS ? SHMANTIKO
-    # YPOTHETO ONTOS TO K EINAI MASKA KAI TO 0 SHMAINEI TO POSITIVE LABEL AND 1 TO ANTITHETO
-    # SOS !!!!!!!! SE TI ANTISTOIXOYN PRAGMATIKA TA I KAI J..... DEN EIMAI SIGOYROS KTLVA SOSTA
-    # TO POS SAMPLE i MALLON EINAI TO i,j tou true track detection pair toy K...
-    # AYTOS STO PAPER GIATI TA EXEI ETSI |POS| MHPOS EINAI MHKOS??? H KATI ALLO????
-
-    # POS KANO TRAIN ME TI LOSS FUNCTION
+def G3_net_loss(T=11, C_contr=6, C_pos=3, C_neg=3, distance_matrix=None, K=None):
 
     pos, neg = retrieve_pairs(K)
     L_contr = torch.tensor(0.).to(device)
@@ -600,6 +578,23 @@ def PNP_NET_loss(T=11, C_contr=6, C_pos=3, C_neg=3, distance_matrix=None, K=None
     L_coef = L_contr + L_pos + L_neg  # to kano minimize ayto??
 
     return L_coef
+
+
+def construct_C_matrix(estims, trues):
+
+    C = np.ones((estims.shape[0], 1))
+
+    for i, estim in enumerate(estims):
+        for j, true in enumerate(trues):
+            gt_center = np.array(true[:2], dtype=float)
+            distance = np.linalg.norm(estim[:2] - gt_center)
+            if distance <= 0.1:
+                C[i] = 0
+                break
+
+    C = torch.tensor(C, dtype=torch.float32).to(device)
+
+    return C
 
 
 class AB3DMOT(object):
@@ -660,8 +655,6 @@ class AB3DMOT(object):
 
         self.frame_count += 1
 
-        # !!!!!!!!!! EDO YPHRXE ENA PERIERGO DEBUGGING ME ENA SCENE SYGKEKRIMENO - MALLON MPOREI KAI SAN DEIGMA
-
         trks = np.zeros((len(self.trackers), 7))  # N x 7
         if self.features:
             trks_feats = torch.stack([feat for feat in self.features], dim=0)
@@ -699,56 +692,57 @@ class AB3DMOT(object):
 
         # print(det_feats.shape, trks_feats.shape, det_trk_matrix.shape, self.tracking_name)
 
-        # vres ena pio omorfo tropo gia olo ayto
         D_feat_module = None
         K = np.empty((0, 0))
         D = np.empty((0, 0))
-        loss = torch.tensor(0.).to(device)
 
         if det_trk_matrix.shape[1] > 0:
 
-            D_feat_module = model.G2(det_trk_matrix).to(device)  # this is already trained
+            D_feat_module = model.G2(det_trk_matrix).to(device)
 
             a_mod, b_mod = model.G3(det_trk_matrix)
             a_mod = a_mod.to(device)
             b_mod = b_mod.to(device)
-            D_mah_module = torch.tensor(D_mah).to(device)
-            point_five = torch.tensor(0.5).to(device)
-            D_mod = D_mah_module + (a_mod * (D_feat_module - (point_five + b_mod)))  # final D
 
+            D_mah_module = torch.tensor(D_mah).to(device)
+            point_five = torch.tensor(0.5).to(device)  # ayto prepei na meinei edo ???
+            D_mod = D_mah_module + (a_mod * (D_feat_module - (point_five + b_mod)))  # final D
             D = D_mod.detach().cpu().numpy()
 
-            K = construct_K_matrix(distance_matrix=D, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
-
-            loss = PNP_NET_loss(distance_matrix=D_mod, K=K)
-            # print(loss)
-
-        # edo D_mah h D ???
         matched_indexes = greedy_match(D)
-        # EDO D_mah h D ???
+
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes,
                                                                                    distance_matrix=D,
                                                                                    dets=dets, trks=trks,
                                                                                    mahalanobis_threshold=match_threshold)
+
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
                 trk.update(dets[d, :][0], info[d, :][0])
-
                 detection_score = info[d, :][0][-1]
-
                 trk.track_score = detection_score
 
-        print(unmatched_dets)
         # create and initialise new trackers for unmatched detections
-        for i in unmatched_dets:  # a scalar of index
-            detection_score = info[i][-1]
-            track_score = detection_score
-            trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
+        scores = torch.ones(dets.shape[0], 1, dtype=torch.float32).to(device)
+        C = torch.ones(dets.shape[0], 1, dtype=torch.float32).to(device)
+        ind = 0
 
-            self.trackers.append(trk)
-            self.features.append(det_feats[i])  # addition
+        if unmatched_dets.shape[0] > 0:
+            ind = 1
+            unmatched_feats = det_feats[unmatched_dets]
+            scores[unmatched_dets] = model.G4(unmatched_feats)
+            C = construct_C_matrix(dets, curr_gts)
+
+        for i in unmatched_dets:  # a scalar of index
+            if scores[i] > 0.5:  # ayto sthn arxh an to valo kanei init synexeia kanonika prpeie na ne > 0.5
+                detection_score = info[i][-1]
+                track_score = detection_score
+                trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
+
+                self.trackers.append(trk)
+                self.features.append(det_feats[i])
 
         i = len(self.trackers)
 
@@ -767,23 +761,22 @@ class AB3DMOT(object):
             # remove dead tracks
             if (trk.time_since_update >= self.max_age):
                 self.trackers.pop(i)
-
                 self.features.pop(i)
 
         if (len(ret) > 0):
 
             if D_feat_module is None:
-                return np.concatenate(ret), D, loss
+                return np.concatenate(ret), scores, C, ind
 
-            return np.concatenate(ret), D, loss  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), scores, C, ind  # x, y, z, theta, l, w, h, ID, other info, confidence
 
         if D_feat_module is None:
-            return np.empty((0, 15 + 7)), D, loss
+            return np.empty((0, 15 + 7)), scores, C, ind
 
         # # we should never be in here
         # # edo ua mpoyme otan yparxei megalh apoklhsh se dims h orientation me ta actual data
         print(dets, '\n', curr_gts, '\n\n', trks, '\n', prev_gts, K)
-        return np.empty((0, 15 + 7)), D, loss
+        return np.empty((0, 15 + 7)), scores, C, ind
 
 
 def format_sample_result(sample_token, tracking_name, tracker):
@@ -942,7 +935,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
-                        trackers, D, loss= mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
+                        trackers, D, K, ind = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         # (N, 9)
                         # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
@@ -950,10 +943,11 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         # for i in range(trackers.shape[0]):
                         #     sample_result = format_sample_result(current_sample_token, tracking_name, trackers[i])
                         #     results[current_sample_token].append(sample_result)
-
-                        if D.shape[0] == 0:
+                        print(ind)
+                        if ind == 0:
                             continue
 
+                        loss = criterion(D, K)
                         loss.backward(retain_graph=True)
 
                         # for name, param in model.named_parameters():
@@ -962,6 +956,16 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
                         #         else:
                         #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
+
+                        # for param in model.g1.parameters():  # edo 4
+                        #     if param.grad is not None:
+                        #         print("Gradients of G1 parameters exist.")
+                        #     else:
+                        #         print("mioay")
+                        #
+                        # for param in model.g4.parameters():  # edo 6 giati
+                        #     if param.grad is not None:
+                        #         print("Gradients of G3 parameters exist.")
 
                         optimizer.zero_grad()
                         optimizer.step()

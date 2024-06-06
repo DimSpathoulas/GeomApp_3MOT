@@ -389,11 +389,11 @@ class Modules(nn.Module):
         super(Modules, self).__init__()
 
         # FEATURE FUSION MODULE
-        self.g1 = nn.Sequential(  # this is G1
+        self.g1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
             nn.Linear(1536, 4608),
-            # nn.ReLU()  # thelei pali relu?
+            # nn.ReLU()
         )
 
         # DISTANCE COMBINATION MODULE 1
@@ -405,16 +405,6 @@ class Modules(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 1)
         )
-
-        # # POIO APO TA DYO ?????
-        # self.g2 = nn.Sequential(
-        #     nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=1),
-        #     nn.ReLU(),
-        #     nn.Flatten(),  # newly added
-        #     nn.Linear(256 * 3 * 3, 256),
-        #     nn.Linear(256, 128),
-        #     nn.Linear(128, 1)
-        # )
 
         # DISTANCE COMBINATION MODULE 2
         self.g3 = nn.Sequential(
@@ -428,11 +418,11 @@ class Modules(nn.Module):
 
         # TRACK INITIALIZATION MODULE
         self.g4 = nn.Sequential(
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(256 * 3 * 3, 128),
-            # nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
             nn.Linear(128, 1),
             nn.Sigmoid()
         )
@@ -458,7 +448,7 @@ class Modules(nn.Module):
 
     def G2(self, x):
 
-        x = torch.tensor(x, dtype=torch.float32).to(device)
+        x = x.to(device)
         y = torch.empty(x.shape[0], x.shape[1]).to(device)
 
         for i, d in enumerate(x):
@@ -470,7 +460,7 @@ class Modules(nn.Module):
 
     def G3(self, x):
 
-        x = torch.tensor(x, dtype=torch.float32)
+        x = x.to(device)
         a = torch.empty(x.shape[0], x.shape[1])
         b = torch.empty(x.shape[0], x.shape[1])
 
@@ -483,7 +473,9 @@ class Modules(nn.Module):
         return a, b
 
     def G4(self, x):
-        score = self.G4(x)
+
+        x = x.to(device)
+        score = self.g4(x)
         return score
 
 
@@ -492,11 +484,11 @@ class Modules(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
-# model.load_state_dict(torch.load('g2_trained_model.pth'))  # for save
+# model.load_state_dict(torch.load('g2_trained_model.pth'))
 # DEN NOMIZO OTI EXEI NOHMA AYTO
-for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
+for param in model.g1.parameters():
     param.requires_grad = True
-for param in model.g2.parameters():  # OPOS AYTO
+for param in model.g2.parameters():
     param.requires_grad = True
 for param in model.g3.parameters():
     param.requires_grad = True
@@ -531,6 +523,7 @@ def hungarian_matching(estims, trues):
 
 
 def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
+
     # dist_m[0,0] is dets[0] and trks[0]
     # dist_m[0,1] is dets[0] and trks[1]
     # etc
@@ -540,14 +533,6 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
     d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
     t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
 
-    # print(dets, '\n', curr_gts)
-    # print(d_idx, d_gt_idx)
-
-    # print('\n\n', trks, '\n', prev_gts)
-    # print(t_idx, t_gt_idx)
-
-    # SE MERIKA EINAI ARKETA EKTOS TO ORIENTATION KAI TA DIMS AN KAI EXEI KANEI KALO DETECT TA CENTERS
-    # DEN JERO POS NA TO LYSO AYTO EKTOS APO TO NA AYJHSO TO THRESH STO CENTERPOINT
     for d, gt_d in zip(d_idx, d_gt_idx):
         for t, gt_t in zip(t_idx, t_gt_idx):
 
@@ -662,8 +647,6 @@ class AB3DMOT(object):
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        print('kai ayto connected einai', det_trk_matrix.grad_fn)
-
         D_feat = np.empty((0, 0))
         D_feat_module = None
         K = np.zeros_like(D_feat)
@@ -675,7 +658,6 @@ class AB3DMOT(object):
 
             D_module = D_feat_module + D_mah_module
             D = D_module.detach().cpu().numpy()
-            print('d module', D_module.grad_fn)
 
             K = construct_K_matrix(distance_matrix=D, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
 
@@ -688,9 +670,6 @@ class AB3DMOT(object):
                                                                                    distance_matrix=D,
                                                                                    dets=dets, trks=trks,
                                                                                    mahalanobis_threshold=match_threshold)
-
-        print('track feats', trks_feats.grad_fn)
-        print('det feats', det_feats.grad_fn)
 
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
@@ -903,7 +882,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
-
                         trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         # (N, 9)
@@ -913,11 +891,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         #     sample_result = format_sample_result(current_sample_token, tracking_name, trackers[i])
                         #     results[current_sample_token].append(sample_result)
 
-                        # # TRAIN D WITH K WITH GLOBALLY INITIALIZED LOSS
-                        # # AND STEP OPTIMIZE AFTER EACH SCENE OR SAMPLE
-                        # print(type(D), tracking_name)  # TO CENTER DISTANCE EINAI KALO ALLA TO ORIEN KAI DIMS OXI
-                        # ETSI TO D_MAH TO KOVEI ALLA AYTO OXI ( TOYLAXISTON AKOMA )
-
                         if D.shape[0] == 0:
                             continue
                         D = D.to(device)
@@ -926,26 +899,15 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         # mhpos prepei na ta kano flatten prota ????
 
                         loss = criterion(D, K)  # den jero an einai sosto ayto etsi....
-                        print(loss)
 
-                        loss.backward()
+                        loss.backward(retain_graph=True)
 
-                        for name, param in model.named_parameters():
-                            if param.requires_grad:
-                                if param.grad is not None:
-                                    print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
-                                else:
-                                    print(f"No gradients for parameter '{name}'. Parameter was not updated.")
-
-                        # for param in model.g1.parameters():  # edo 4
-                        #     if param.grad is not None:
-                        #         print("Gradients of G1 parameters exist.")
-                        #     else:
-                        #         print("mioay")
-                        #
-                        # for param in model.g2.parameters():  # edo 6 giati
-                        #     if param.grad is not None:
-                        #         print("Gradients of G2 parameters exist.")
+                        # for name, param in model.named_parameters():
+                        #     if param.requires_grad:
+                        #         if param.grad is not None:
+                        #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                        #         else:
+                        #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
                         optimizer.zero_grad()
                         optimizer.step()
@@ -954,11 +916,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                 total_time += cycle_time
 
                 u = u + 1
-
-                # # EDO ???
-                # loss.backward()
-                # optimizer.zero_grad()
-                # optimizer.step()
 
                 prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
