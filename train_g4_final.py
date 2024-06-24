@@ -459,7 +459,7 @@ for param in model.g4.parameters():
 
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
 criterion = nn.BCELoss()
-EPOCHS = 2
+EPOCHS = 10
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
