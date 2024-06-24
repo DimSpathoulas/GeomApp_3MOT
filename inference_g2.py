@@ -1,30 +1,23 @@
 # We implemented our method on top of AB3DMOT's KITTI tracking open-source code
 
 from __future__ import print_function
-from tqdm import tqdm
-import os.path
-import json
-import sys
-import time
-import pickle
+
 import copy
-
-from nuscenes import NuScenes
-from nuscenes.eval.common.data_classes import EvalBoxes
-from nuscenes.eval.detection.data_classes import DetectionBox
-from splits import get_scenes_of_split
-
-from covariance import Covariance
-from utils import mkdir_if_missing
-
-from filterpy.kalman import KalmanFilter
-from pyquaternion import Quaternion
-from scipy.optimize import linear_sum_assignment
+import json
+import os.path
+import pickle
+import time
 
 import numpy as np
 import torch
-import torch.optim as optim
+from filterpy.kalman import KalmanFilter
+from nuscenes import NuScenes
+from pyquaternion import Quaternion
 from torch import nn
+from tqdm import tqdm
+
+from covariance import Covariance
+from splits import get_scenes_of_split
 
 NUSCENES_TRACKING_NAMES = [
     'bicycle',
@@ -67,39 +60,6 @@ def create_box_annotations(sample_token, nusc):
                 ground_truths[tracking_name].append(gt_box)
 
     return ground_truths
-
-
-def rot_z(t):
-    c = np.cos(t)
-    s = np.sin(t)
-    return np.array([[c, -s, 0],
-                     [s, c, 0],
-                     [0, 0, 1]])
-
-
-def create_box(bbox3d_input):
-    # [x, y, z, w, l, h, rot]
-
-    bbox3d = copy.copy(bbox3d_input)
-
-    R = rot_z(bbox3d[6])
-
-    w = bbox3d[3]
-    l = bbox3d[4]
-    h = bbox3d[5]
-
-    # 3d bounding box corners
-    x_corners = [w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2]
-    y_corners = [l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2]
-    z_corners = [-h / 2, -h / 2, -h / 2, -h / 2, h / 2, h / 2, h / 2, h / 2]
-
-    # rotate and translate 3d bounding box
-    corners_3d = np.dot(R, np.vstack([x_corners, y_corners, z_corners]))
-    corners_3d[0, :] = corners_3d[0, :] + bbox3d[0]
-    corners_3d[1, :] = corners_3d[1, :] + bbox3d[1]
-    corners_3d[2, :] = corners_3d[2, :] + bbox3d[2]
-
-    return np.transpose(corners_3d)
 
 
 class KalmanBoxTracker(object):
@@ -386,7 +346,7 @@ def expand_and_concat(det_feats, trk_feats):
 
 class Modules(nn.Module):
 
-    def __init__(self):  # edo ua valoyme to config
+    def __init__(self):
         super(Modules, self).__init__()
 
         # FEATURE FUSION MODULE
@@ -394,7 +354,6 @@ class Modules(nn.Module):
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
             nn.Linear(1536, 4608),
-            # nn.ReLU()
         )
 
         # DISTANCE COMBINATION MODULE 1
@@ -497,52 +456,6 @@ EPOCHS = 1
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
-
-def hungarian_matching(estims, trues):
-
-    cost_matrix = np.zeros((len(estims), len(trues)))
-
-    for i, estim in enumerate(estims):
-        for j, true in enumerate(trues):
-            gt_center = np.array(true[:2], dtype=float)
-            distance = np.linalg.norm(estim[:2] - gt_center)
-            cost_matrix[i, j] = distance
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    return row_ind, col_ind
-
-
-def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
-
-    # dist_m[0,0] is dets[0] and trks[0]
-    # dist_m[0,1] is dets[0] and trks[1]
-    # etc
-
-    # mhpos yparxei pio aplos tropos?
-    K = np.ones_like(distance_matrix)
-    d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
-    t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
-
-    for d, gt_d in zip(d_idx, d_gt_idx):
-        for t, gt_t in zip(t_idx, t_gt_idx):
-
-            center_det = dets[d][:2]
-            gt_center_det = np.array(curr_gts[gt_d][:2], dtype=float)
-
-            center_trk = trks[t][:2]
-            gt_center_trk = np.array(prev_gts[gt_t][:2], dtype=float)
-
-            dist_1 = np.linalg.norm(center_det - gt_center_det)
-            dist_2 = np.linalg.norm(center_trk - gt_center_trk)
-
-            if curr_gts[gt_d][7] == prev_gts[gt_t][7] and dist_1 <= threshold and dist_2 <= threshold:
-                K[d, t] = 0
-
-    # print(K)
-
-    return K
 
 
 class AB3DMOT(object):
@@ -649,9 +562,8 @@ class AB3DMOT(object):
             D_module = D_feat_module + D_mah_module
             D = D_module.detach().cpu().numpy()
 
-        # edo D_mah h D ???
         matched_indexes = greedy_match(D)
-        # EDO D_mah h D ???
+
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes,
                                                                                    distance_matrix=D,
                                                                                    dets=dets, trks=trks,
@@ -680,8 +592,8 @@ class AB3DMOT(object):
 
         for trk in reversed(self.trackers):
             d = trk.get_state()  # bbox location
-            d = d[self.my_order_back]  # ayto giati yparxei kan
-            # what is that :0
+            d = d[self.my_order_back]
+
             if ((trk.time_since_update < self.max_age) and (
                     trk.hits >= self.min_hits or self.frame_count <= self.min_hits)):
                 ret.append(np.concatenate((d, [trk.id + 1], [trk.track_score])).reshape(1, -1))  # +1 as MOT benchmark requires positive
@@ -748,7 +660,7 @@ def format_sample_result(sample_token, tracking_name, tracker, prev_trackers):
     return sample_result
 
 
-def track_nuscenes(data_split='val', match_threshold=11, save_root='/.results/01'):
+def track_nuscenes(data_split='val', match_threshold=11):
     '''
     submission {
       "meta": {
@@ -798,7 +710,7 @@ def track_nuscenes(data_split='val', match_threshold=11, save_root='/.results/01
         total_time = 0.0
         total_frames = 0
 
-        print('epoch', epoch)
+        print('inference')
         processed_scene_tokens = set()
 
         for sample, sample_data in tqdm(all_results.items()):  # fainetai san 0% alla metra scenes oxi samples (mallon)
@@ -865,8 +777,6 @@ def track_nuscenes(data_split='val', match_threshold=11, save_root='/.results/01
 
                 total_frames += 1
                 start_time = time.time()
-
-                # print('\n\n\n\n', current_sample_token)
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:

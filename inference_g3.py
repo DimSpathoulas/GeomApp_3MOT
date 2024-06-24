@@ -3,15 +3,12 @@
 from __future__ import print_function
 from tqdm import tqdm
 import os.path
-import sys
 import time
 import pickle
 import copy
 import json
 
 from nuscenes import NuScenes
-from nuscenes.eval.common.data_classes import EvalBoxes
-from nuscenes.eval.detection.data_classes import DetectionBox
 from splits import get_scenes_of_split
 
 from covariance import Covariance
@@ -19,13 +16,10 @@ from utils import mkdir_if_missing
 
 from filterpy.kalman import KalmanFilter
 from pyquaternion import Quaternion
-from scipy.optimize import linear_sum_assignment
 
 import numpy as np
 import torch
-import torch.optim as optim
 from torch import nn
-from torchviz import make_dot
 
 NUSCENES_TRACKING_NAMES = [
     'bicycle',
@@ -68,39 +62,6 @@ def create_box_annotations(sample_token, nusc):
                 ground_truths[tracking_name].append(gt_box)
 
     return ground_truths
-
-
-def rot_z(t):
-    c = np.cos(t)
-    s = np.sin(t)
-    return np.array([[c, -s, 0],
-                     [s, c, 0],
-                     [0, 0, 1]])
-
-
-def create_box(bbox3d_input):
-    # [x, y, z, w, l, h, rot]
-
-    bbox3d = copy.copy(bbox3d_input)
-
-    R = rot_z(bbox3d[6])
-
-    w = bbox3d[3]
-    l = bbox3d[4]
-    h = bbox3d[5]
-
-    # 3d bounding box corners
-    x_corners = [w / 2, -w / 2, -w / 2, w / 2, w / 2, -w / 2, -w / 2, w / 2]
-    y_corners = [l / 2, l / 2, -l / 2, -l / 2, l / 2, l / 2, -l / 2, -l / 2]
-    z_corners = [-h / 2, -h / 2, -h / 2, -h / 2, h / 2, h / 2, h / 2, h / 2]
-
-    # rotate and translate 3d bounding box
-    corners_3d = np.dot(R, np.vstack([x_corners, y_corners, z_corners]))
-    corners_3d[0, :] = corners_3d[0, :] + bbox3d[0]
-    corners_3d[1, :] = corners_3d[1, :] + bbox3d[1]
-    corners_3d[2, :] = corners_3d[2, :] + bbox3d[2]
-
-    return np.transpose(corners_3d)
 
 
 class KalmanBoxTracker(object):
@@ -386,7 +347,7 @@ def expand_and_concat(det_feats, trk_feats):
 
 class Modules(nn.Module):
 
-    def __init__(self):  # edo ua valoyme to config
+    def __init__(self):
         super(Modules, self).__init__()
 
         # FEATURE FUSION MODULE
@@ -427,14 +388,11 @@ class Modules(nn.Module):
             nn.Sigmoid()
         )
 
-    # PREPEI TO G1 KAI G2 NA MPOYN STO IDIO FORWARD FUNC OSTE NA EINAI CONNECTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # POS META UA TA TREJO XORISTA????????
-    # MALLON UA PREPEI NA FTIAJO JEXORISTA ANAMETAJY TOYS NANE. KAI 3 DIAFORETIKA FUNCTIONS GIA KATHE TI POY THELO
     def G1(self, F2D, F3D, cam_onehot_vector):
 
         F2D = torch.tensor(F2D).to(device)
         F3D = torch.tensor(F3D).to(device)
-        cam_onehot_vector = torch.tensor(cam_onehot_vector, dtype=torch.float32).to(device)
+        cam_onehot_vector = torch.tensor(cam_onehot_vector).to(device)
 
         fused = torch.cat((F2D, cam_onehot_vector), dim=1)
 
@@ -486,9 +444,9 @@ model = Modules()
 model.to(device)
 model.load_state_dict(torch.load('g2_trained_model_dummy.pth', map_location=device))
 
-for param in model.g1.parameters():  # AYTO UA EPREPE NA VGAZEI SFALMA !!!!!!!!!!!
+for param in model.g1.parameters():
     param.requires_grad = False
-for param in model.g2.parameters():  # OPOS AYTO
+for param in model.g2.parameters():
     param.requires_grad = False
 for param in model.g3.parameters():
     param.requires_grad = False
@@ -502,109 +460,8 @@ EPOCHS = 1
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-def hungarian_matching(estims, trues):
-
-    cost_matrix = np.zeros((len(estims), len(trues)))
-
-    for i, estim in enumerate(estims):
-        for j, true in enumerate(trues):
-            gt_center = np.array(true[:2], dtype=float)
-            distance = np.linalg.norm(estim[:2] - gt_center)
-            cost_matrix[i, j] = distance
-
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
-
-    return row_ind, col_ind
-
-
-def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
-    # dist_m[0,0] is dets[0] and trks[0]
-    # dist_m[0,1] is dets[0] and trks[1]
-    # etc
-
-    # mhpos yparxei pio aplos tropos?
-    K = np.ones_like(distance_matrix)
-    d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
-    t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
-
-    # print(dets, '\n', curr_gts)
-    # print(d_idx, d_gt_idx)
-
-    # print('\n\n', trks, '\n', prev_gts)
-    # print(t_idx, t_gt_idx)
-
-    # SE MERIKA EINAI ARKETA EKTOS TO ORIENTATION KAI TA DIMS AN KAI EXEI KANEI KALO DETECT TA CENTERS
-    # DEN JERO POS NA TO LYSO AYTO EKTOS APO TO NA AYJHSO TO THRESH STO CENTERPOINT
-    for d, gt_d in zip(d_idx, d_gt_idx):
-        for t, gt_t in zip(t_idx, t_gt_idx):
-
-            center_det = dets[d][:2]
-            gt_center_det = np.array(curr_gts[gt_d][:2], dtype=float)
-
-            center_trk = trks[t][:2]
-            gt_center_trk = np.array(prev_gts[gt_t][:2], dtype=float)
-
-            dist_1 = np.linalg.norm(center_det - gt_center_det)
-            dist_2 = np.linalg.norm(center_trk - gt_center_trk)
-
-            if curr_gts[gt_d][7] == prev_gts[gt_t][7] and dist_1 <= threshold and dist_2 <= threshold:
-                K[d, t] = 0
-
-    # print(K)
-
-    return K
-
-
-def retrieve_pairs(K):
-
-    pos = []
-    neg = []
-
-    for i in range(K.shape[0]):
-        for j in range(K.shape[1]):
-            if K[i, j] == 0:
-                pos.append((i, j))
-            else:
-                neg.append((i, j))
-
-    return pos, neg
-
-
-def PNP_NET_loss(T=11, C_contr=6, C_pos=3, C_neg=3, distance_matrix=None, K=None):
-
-    # TI SHMAINEI AGGREGATE DISTANCE SE EMAS ? SHMANTIKO
-    # YPOTHETO ONTOS TO K EINAI MASKA KAI TO 0 SHMAINEI TO POSITIVE LABEL AND 1 TO ANTITHETO
-    # SOS !!!!!!!! SE TI ANTISTOIXOYN PRAGMATIKA TA I KAI J..... DEN EIMAI SIGOYROS KTLVA SOSTA
-    # TO POS SAMPLE i MALLON EINAI TO i,j tou true track detection pair toy K...
-    # AYTOS STO PAPER GIATI TA EXEI ETSI |POS| MHPOS EINAI MHKOS??? H KATI ALLO????
-
-    # POS KANO TRAIN ME TI LOSS FUNCTION
-
-    pos, neg = retrieve_pairs(K)
-    L_contr = torch.tensor(0.).to(device)
-    L_pos = torch.tensor(0.).to(device)
-    L_neg = torch.tensor(0.).to(device)
-    zero = torch.tensor(0.).to(device)
-    for i, j in pos:
-        for ii, jj in neg:
-            L_contr += torch.max(zero, C_contr - (distance_matrix[i][j] - distance_matrix[ii][jj]))
-    L_contr = L_contr / (len(pos) * len(neg))
-
-    for i, j in pos:
-        L_pos += torch.max(zero, C_pos - (T - distance_matrix[i][j]))
-    L_pos = L_pos / len(pos)
-
-    for i, j in neg:
-        L_neg += torch.max(zero, C_neg - (T - distance_matrix[i][j]))
-    L_neg = L_neg / len(neg)
-
-    L_coef = L_contr + L_pos + L_neg  # to kano minimize ayto??
-
-    return L_coef
-
-
 class AB3DMOT(object):
-    def __init__(self, max_age=2, min_hits=3, tracking_name='car', modeL=None):
+    def __init__(self, max_age=2, min_hits=3, tracking_name='car'):
         """
         observation:
                           [0, 1, 2, 3, 4, 5, 6]
@@ -623,8 +480,6 @@ class AB3DMOT(object):
         self.reorder = [3, 4, 5, 6, 2, 1, 0]
         self.reorder_back = [6, 5, 4, 0, 1, 2, 3]
         self.tracking_name = tracking_name
-
-        # self.modeL = modeL
 
         self.features = []
         self.my_order = [0, 1, 2, 6, 4, 3, 5]  # x, y, z, rot_z, l, w, h
@@ -704,7 +559,7 @@ class AB3DMOT(object):
 
         if det_trk_matrix.shape[1] > 0:
 
-            D_feat_module = model.G2(det_trk_matrix).to(device)  # this is already trained
+            D_feat_module = model.G2(det_trk_matrix).to(device)
 
             a_mod, b_mod = model.G3(det_trk_matrix)
             a_mod = a_mod.to(device)
@@ -715,9 +570,7 @@ class AB3DMOT(object):
 
             D = D_mod.detach().cpu().numpy()
 
-        # edo D_mah h D ???
         matched_indexes = greedy_match(D)
-        # EDO D_mah h D ???
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes,
                                                                                    distance_matrix=D,
                                                                                    dets=dets, trks=trks,
@@ -748,7 +601,6 @@ class AB3DMOT(object):
 
             d = d[self.my_order_back]  # ayto giati yparxei kan
 
-            # what is that :0
             if ((trk.time_since_update < self.max_age) and (
                     trk.hits >= self.min_hits or self.frame_count <= self.min_hits)):
                 ret.append(np.concatenate((d, [trk.id + 1], [trk.track_score])).reshape(1, -1))  # +1 as MOT benchmark requires positive
@@ -864,7 +716,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
         total_time = 0.0
         total_frames = 0
 
-        print('epoch', epoch)
+        print('inference')
         processed_scene_tokens = set()
 
         for sample, sample_data in tqdm(all_results.items()):  # fainetai san 0% alla metra scenes oxi samples (mallon)
@@ -878,7 +730,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                 continue
 
             first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
-            print('sc', scene_token)
+            # print('sc', scene_token)
             current_sample_token = first_sample_token
 
             mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name) for
@@ -889,8 +741,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             prev_trackers = {}
             while current_sample_token != '':
-
-                print('\n', current_sample_token)
 
                 # if u == 38:
                 #     exit()
@@ -957,7 +807,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
             processed_scene_tokens.add(scene_token)
 
         # # finished tracking all scenes, write output data
-        # NA ALLAJEIS ONOMAAAA
         meta = {
                 "use_camera": True,
                 "use_lidar": True,
