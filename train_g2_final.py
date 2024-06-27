@@ -697,8 +697,6 @@ class AB3DMOT(object):
 
                 self.features.pop(i)
 
-        if D_feat_module.shape[0] > K.shape[0]:
-            print('XASAME ALLA TO EXOYME KAI AYTO')
         if (len(ret) > 0):
 
             if D_feat_module is None:
