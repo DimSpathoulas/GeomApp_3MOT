@@ -707,9 +707,8 @@ class AB3DMOT(object):
         if D_feat_module is None:
             return np.empty((0, 15 + 7)), D, K
 
-        # # we should never be in here
-        # # edo ua mpoyme otan yparxei megalh apoklhsh se dims h orientation me ta actual data
-        print('IF THIS APPEARS WE MIGHT HAVE A PROBLEM, ALLA THA TO MAGEIREPSOYME')
+        # FALSE DETECTION HANDLING
+        D_feat_module = None
         return np.empty((0, 15 + 7)), D_feat_module, K
 
 
