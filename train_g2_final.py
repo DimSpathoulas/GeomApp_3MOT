@@ -697,6 +697,8 @@ class AB3DMOT(object):
 
                 self.features.pop(i)
 
+        if D_feat_module.shape[0] > K.shape[0]:
+            print('XASAME ALLA TO EXOYME KAI AYTO')
         if (len(ret) > 0):
 
             if D_feat_module is None:
@@ -708,8 +710,8 @@ class AB3DMOT(object):
             return np.empty((0, 15 + 7)), D, K
 
         # FALSE DETECTION HANDLING
-        D_feat_module = None
-        return np.empty((0, 15 + 7)), D_feat_module, K
+        D = np.empty((0, 0))
+        return np.empty((0, 15 + 7)), D, K
 
 
 def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/01'):
