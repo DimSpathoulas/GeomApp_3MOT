@@ -723,7 +723,7 @@ class AB3DMOT(object):
             return np.empty((0, 15 + 7)), D, loss
 
         # FALSE DETECTION HANDLING
-        D = None
+        D = np.empty((0, 0))
         return np.empty((0, 15 + 7)), D, loss
 
 
