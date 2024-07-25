@@ -7,6 +7,7 @@ import sys
 import time
 import pickle
 import copy
+import argparse
 
 from nuscenes import NuScenes
 from nuscenes.eval.common.data_classes import EvalBoxes
@@ -368,31 +369,32 @@ def associate_detections_to_trackers(matched_indices, distance_matrix, dets, trk
 
 def expand_and_concat(det_feats, trk_feats):
 
-    matrix = torch.empty((det_feats.shape[0], trk_feats.shape[0],
-                       2 * det_feats.shape[1],
-                       det_feats.shape[2], det_feats.shape[3]))
-
     if trk_feats.shape[0] == 0:
-        return matrix
+        return torch.empty((det_feats.shape[0], trk_feats.shape[0],
+                       2 * det_feats.shape[1],
+                       det_feats.shape[2], det_feats.shape[3])).to(device)
 
-    for i in range(det_feats.shape[0]):
-        for j in range(trk_feats.shape[0]):
-            conc_features = torch.concatenate((det_feats[i], trk_feats[j]))
-            matrix[i, j] = conc_features
+    det_feats_expanded = det_feats.unsqueeze(1)  # Shape: (N, 1, C, H, W)
+    trk_feats_expanded = trk_feats.unsqueeze(0)  # Shape: (1, M, C, H, W)
+
+    # Concatenate along the channel dimension
+    matrix = torch.cat((det_feats_expanded.expand(-1, trk_feats.shape[0], -1, -1, -1),
+                        trk_feats_expanded.expand(det_feats.shape[0], -1, -1, -1, -1)),
+                       dim=2)
 
     return matrix
 
 
 class Modules(nn.Module):
 
-    def __init__(self):  # edo ua valoyme to config
+    def __init__(self):
         super(Modules, self).__init__()
 
         # FEATURE FUSION MODULE
         self.g1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
-            nn.Linear(1536, 4608),
+            nn.Linear(1536, 4608)
         )
 
         # DISTANCE COMBINATION MODULE 1
@@ -436,21 +438,19 @@ class Modules(nn.Module):
 
         fused = self.g1(fused)
 
-        fused = fused.view(fused.shape[0], 512, 3, 3)
-
+        fused = fused.reshape(fused.shape[0], 512, 3, 3)
         fused = fused + F3D
 
         return fused
 
     def G2(self, x):
 
-        x = x.to(device)
-        y = torch.empty(x.shape[0], x.shape[1]).to(device)
+        ds, ts, channels, height, width = x.shape
+        x_reshaped = x.view(-1, channels, height, width)
 
-        for i, d in enumerate(x):
-            ms = torch.cat([dt.unsqueeze(0) for dt in d], dim=0)
-            result = self.g2(ms)
-            y[i, :] = result.squeeze()
+        result = self.g2(x_reshaped)
+
+        y = result.view(ds, ts)
 
         return y
 
@@ -496,7 +496,7 @@ optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr
 # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
 criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
 EPOCHS = 10
-
+torch.autograd.set_detect_anomaly(True)
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
@@ -567,7 +567,7 @@ class AB3DMOT(object):
 
         self.features = []
         self.my_order = [0, 1, 2, 6, 4, 3, 5]  # x, y, z, rot_z, l, w, h
-        self.my_order_back = [0, 1, 2, 4, 5, 6, 3]  # xreiazetai kan ayto?
+        self.my_order_back = [0, 1, 2, 4, 5, 6, 3]
 
     def update(self, dets_all, match_threshold):
         """
@@ -633,7 +633,6 @@ class AB3DMOT(object):
         D_mah_module = torch.tensor(D_mah).to(device)
 
         # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-
         det_feats = model.G1(feats, pcbs, cam_vecs)
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
@@ -646,7 +645,6 @@ class AB3DMOT(object):
         if det_trk_matrix.shape[1] > 0:
 
             D_feat_module = model.G2(det_trk_matrix)
-
             D_module = D_feat_module + D_mah_module
             D = D_module.detach().cpu().numpy()
 
@@ -676,7 +674,7 @@ class AB3DMOT(object):
             trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
 
             self.trackers.append(trk)
-            self.features.append(det_feats[i])  # addition
+            self.features.append(det_feats[i].detach())  # addition  VERY IMPORTANT THAT I ADDED THE DETACH
 
         i = len(self.trackers)
 
@@ -702,40 +700,37 @@ class AB3DMOT(object):
             if D_feat_module is None:
                 return np.concatenate(ret), D, K
 
-            return np.concatenate(ret), D_feat_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
 
         if D_feat_module is None:
-            return np.empty((0, 15 + 7)), D, K
+            return np.empty((0, 15 + 7)), D_module, K
 
         # FALSE DETECTION HANDLING
         D = np.empty((0, 0))
         return np.empty((0, 15 + 7)), D, K
 
 
-def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/01'):
-    '''
-    submission {
-      "meta": {
-          "use_camera":   <bool>  -- Whether this submission uses camera data as an input.
-          "use_lidar":    <bool>  -- Whether this submission uses lidar data as an input.
-          "use_radar":    <bool>  -- Whether this submission uses radar data as an input.
-          "use_map":      <bool>  -- Whether this submission uses map data as an input.
-          "use_external": <bool>  -- Whether this submission uses external data as an input.
-      },
-      "results": {
-          sample_token <str>: List[sample_result] -- Maps each sample_token to a list of sample_results.
-      }
-    }
+def track_nuscenes(match_threshold=11):
 
-    '''
+    split_name = 'train'
 
-    save_dir = os.path.join(save_root, data_split);
-    mkdir_if_missing(save_dir)
-    if 'train' in data_split:
-        split_name = 'mini_train'
-        detection_file = '../../data/tracking_input/sample_mini_train_v6.pkl'
-        data_root = '../../data/nuscenes/v1.0-mini'
-        version = 'v1.0-mini'
+    parser = argparse.ArgumentParser(description="Train G2 with lidar and camera detected characteristics")
+
+    parser.add_argument('--version', type=str, default='v1.0-mini',
+                        help='NuScenes dataset version')
+    parser.add_argument('--data_root', type=str, default='../../data/nuscenes/v1.0-mini',
+                        help='Root directory of the NuScenes dataset')
+    parser.add_argument('--detection_file', type=str,
+                        default="../../data/tracking_input/sample_mini_train_v6.pkl",
+                        help='Path to the detections and characteristics')
+    parser.add_argument('--model_state', type=str, default='g2_trained_model_test_1.pth',
+                        help='destination and name for model')
+
+    args = parser.parse_args()
+    detection_file = args.detection_file
+    data_root = args.data_root
+    version = args.version
+    model_state = args.model_state
 
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
@@ -780,6 +775,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
             while current_sample_token != '':
 
+                # print(current_sample_token)
                 # if u == 38:
                 #     exit()
 
@@ -820,30 +816,26 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                 total_frames += 1
                 start_time = time.time()
 
-                # print('\n\n\n\n', current_sample_token)
-
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
                         trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         if D.shape[0] == 0:
                             continue
-                        
                         optimizer.zero_grad()
-                        
-                        D = D.to(device)
-                        K = torch.tensor(K).to(device)
 
+                        # D = D.to(device)
+                        K = torch.tensor(K).to(device)
                         loss = criterion(D, K)
 
-                        loss.backward(retain_graph=True)
+                        loss.backward(retain_graph=False)  # sounds right
 
-                        # for name, param in model.named_parameters():
-                        #     if param.requires_grad:
-                        #         if param.grad is not None:
-                        #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
-                        #         else:
-                        #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
+                        for name, param in model.named_parameters():
+                            if param.requires_grad:
+                                if param.grad is not None:
+                                    print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                                else:
+                                    print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
                         optimizer.step()
 
@@ -862,7 +854,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
         total_time, total_frames, total_frames / total_time))
 
     # save model after epochs
-    torch.save(model.state_dict(), 'g2_trained_model_dummy.pth')
+    torch.save(model.state_dict(), model_state)
 
 
 if __name__ == '__main__':
