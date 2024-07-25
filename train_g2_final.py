@@ -830,12 +830,12 @@ def track_nuscenes(match_threshold=11):
 
                         loss.backward(retain_graph=False)  # sounds right
 
-                        for name, param in model.named_parameters():
-                            if param.requires_grad:
-                                if param.grad is not None:
-                                    print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
-                                else:
-                                    print(f"No gradients for parameter '{name}'. Parameter was not updated.")
+                        # for name, param in model.named_parameters():
+                        #     if param.requires_grad:
+                        #         if param.grad is not None:
+                        #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                        #         else:
+                        #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
                         optimizer.step()
 
