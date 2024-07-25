@@ -861,7 +861,9 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         if ind == 0:
                             continue
-
+                            
+                        optimizer.zero_grad()
+                        
                         loss = criterion(D, K)
                         loss.backward(retain_graph=True)
 
@@ -872,7 +874,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                                 else:
                                     print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
-                        optimizer.zero_grad()
                         optimizer.step()
 
                 cycle_time = time.time() - start_time
