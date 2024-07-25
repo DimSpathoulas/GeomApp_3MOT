@@ -828,6 +828,9 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         if D.shape[0] == 0:
                             continue
+                        
+                        optimizer.zero_grad()
+                        
                         D = D.to(device)
                         K = torch.tensor(K).to(device)
 
@@ -842,7 +845,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         #         else:
                         #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
-                        optimizer.zero_grad()
                         optimizer.step()
 
                 cycle_time = time.time() - start_time
