@@ -844,7 +844,9 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
 
                         if D.shape[0] == 0:
                             continue
-
+                            
+                        optimizer.zero_grad()
+                        
                         loss.backward(retain_graph=True)
 
                         # for name, param in model.named_parameters():
@@ -853,8 +855,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
                         #         else:
                         #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
-
-                        optimizer.zero_grad()
+                        
                         optimizer.step()
 
                 cycle_time = time.time() - start_time
