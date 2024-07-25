@@ -393,7 +393,6 @@ class Modules(nn.Module):
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
             nn.Linear(1536, 4608),
-            # nn.ReLU()
         )
 
         # DISTANCE COMBINATION MODULE 1
@@ -427,9 +426,6 @@ class Modules(nn.Module):
             nn.Sigmoid()
         )
 
-    # PREPEI TO G1 KAI G2 NA MPOYN STO IDIO FORWARD FUNC OSTE NA EINAI CONNECTED !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # POS META UA TA TREJO XORISTA????????
-    # MALLON UA PREPEI NA FTIAJO JEXORISTA ANAMETAJY TOYS NANE. KAI 3 DIAFORETIKA FUNCTIONS GIA KATHE TI POY THELO
     def G1(self, F2D, F3D, cam_onehot_vector):
 
         F2D = torch.tensor(F2D).to(device)
@@ -484,24 +480,22 @@ class Modules(nn.Module):
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
-# model.load_state_dict(torch.load('g2_trained_model.pth'))
-# DEN NOMIZO OTI EXEI NOHMA AYTO
+
 for param in model.g1.parameters():
     param.requires_grad = True
 for param in model.g2.parameters():
     param.requires_grad = True
 for param in model.g3.parameters():
-    param.requires_grad = True
+    param.requires_grad = False
 for param in model.g4.parameters():
-    param.requires_grad = True
+    param.requires_grad = False
 
 optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
-# criterion = nn.BCELoss()
 # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
 # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
 # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
 criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
-EPOCHS = 2
+EPOCHS = 10
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -528,7 +522,6 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
     # dist_m[0,1] is dets[0] and trks[1]
     # etc
 
-    # mhpos yparxei pio aplos tropos?
     K = np.ones_like(distance_matrix)
     d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
     t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
@@ -547,8 +540,6 @@ def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshol
 
             if curr_gts[gt_d][7] == prev_gts[gt_t][7] and dist_1 <= threshold and dist_2 <= threshold:
                 K[d, t] = 0
-
-    # print(K)
 
     return K
 
@@ -661,11 +652,8 @@ class AB3DMOT(object):
 
             K = construct_K_matrix(distance_matrix=D, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
 
-        # D = D_mah + (a * (D_feat - (0.5 + b))) final D
-
-        # edo D_mah h D ???
         matched_indexes = greedy_match(D)
-        # EDO D_mah h D ???
+
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes,
                                                                                    distance_matrix=D,
                                                                                    dets=dets, trks=trks,
@@ -695,9 +683,8 @@ class AB3DMOT(object):
         for trk in reversed(self.trackers):
             d = trk.get_state()  # bbox location
 
-            d = d[self.my_order_back]  # ayto giati yparxei kan
+            d = d[self.my_order_back]
 
-            # what is that :0
             if ((trk.time_since_update < self.max_age) and (
                     trk.hits >= self.min_hits or self.frame_count <= self.min_hits)):
                 ret.append(np.concatenate((d, [trk.id + 1], trk.info[:-1], [trk.track_score])).reshape(1,
@@ -720,44 +707,9 @@ class AB3DMOT(object):
         if D_feat_module is None:
             return np.empty((0, 15 + 7)), D, K
 
-        # # we should never be in here
-        # # edo ua mpoyme otan yparxei megalh apoklhsh se dims h orientation me ta actual data
-        print(dets, '\n', curr_gts, '\n\n', trks, '\n', prev_gts, K)
-        return np.empty((0, 15 + 7)), D_feat_module, K
-
-
-def format_sample_result(sample_token, tracking_name, tracker):
-    '''
-    Input:
-      tracker: (9): [h, w, l, x, y, z, rot_y], tracking_id, tracking_score
-    Output:
-    sample_result {
-      "sample_token":   <str>         -- Foreign key. Identifies the sample/keyframe for which objects are detected.
-      "translation":    <float> [3]   -- Estimated bounding box location in meters in the global frame: center_x, center_y, center_z.
-      "size":           <float> [3]   -- Estimated bounding box size in meters: width, length, height.
-      "rotation":       <float> [4]   -- Estimated bounding box orientation as quaternion in the global frame: w, x, y, z.
-      "velocity":       <float> [2]   -- Estimated bounding box velocity in m/s in the global frame: vx, vy.
-      "tracking_id":    <str>         -- Unique object id that is used to identify an object track across samples.
-      "tracking_name":  <str>         -- The predicted class for this sample_result, e.g. car, pedestrian.
-                                         Note that the tracking_name cannot change throughout a track.
-      "tracking_score": <float>       -- Object prediction score between 0 and 1 for the class identified by tracking_name.
-                                         We average over frame level scores to compute the track level score.
-                                         The score is used to determine positive and negative tracks via thresholding.
-    }
-    '''
-    rotation = Quaternion(axis=[0, 0, 1], angle=tracker[6]).elements
-    sample_result = {
-        'sample_token': sample_token,
-        'translation': [tracker[3], tracker[4], tracker[5]],
-        'size': [tracker[1], tracker[2], tracker[0]],
-        'rotation': [rotation[0], rotation[1], rotation[2], rotation[3]],
-        'velocity': [0, 0],
-        'tracking_id': str(int(tracker[7])),
-        'tracking_name': tracking_name,
-        'tracking_score': tracker[8]
-    }
-
-    return sample_result
+        # FALSE DETECTION HANDLING
+        D = np.empty((0, 0))
+        return np.empty((0, 15 + 7)), D, K
 
 
 def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/01'):
@@ -784,13 +736,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
         detection_file = '../../data/tracking_input/sample_mini_train_v6.pkl'
         data_root = '../../data/nuscenes/v1.0-mini'
         version = 'v1.0-mini'
-        output_path = os.path.join(save_dir, 'results_train_probabilistic_tracking.json')
-
-    elif 'val' in data_split:
-        detection_file = '../../data/tracking_input/sample_mini_train_v1.pkl'
-        data_root = '../../data/nuscenes/v1.0-mini'
-        version = 'v1.0-mini'
-        output_path = os.path.join(save_dir, 'results_val_probabilistic_tracking.json')
 
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
@@ -813,7 +758,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
         print('epoch', epoch)
         processed_scene_tokens = set()
 
-        for sample, sample_data in tqdm(all_results.items()):  # fainetai san 0% alla metra scenes oxi samples (mallon)
+        for sample, sample_data in tqdm(all_results.items()):
 
             try:
                 scene_token = nusc.get('sample', sample)['scene_token']
@@ -824,7 +769,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                 continue
 
             first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
-            print('sc', scene_token)
             current_sample_token = first_sample_token
 
             mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name) for
@@ -835,8 +779,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
 
             while current_sample_token != '':
-
-                print('\n', current_sample_token)
 
                 # if u == 38:
                 #     exit()
@@ -884,21 +826,15 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
                         trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
-                        # (N, 9)
-                        # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
-                        # print('trackers: ', trackers)
-                        # for i in range(trackers.shape[0]):
-                        #     sample_result = format_sample_result(current_sample_token, tracking_name, trackers[i])
-                        #     results[current_sample_token].append(sample_result)
-
                         if D.shape[0] == 0:
                             continue
+                        
+                        optimizer.zero_grad()
+                        
                         D = D.to(device)
                         K = torch.tensor(K).to(device)
 
-                        # mhpos prepei na ta kano flatten prota ????
-
-                        loss = criterion(D, K)  # den jero an einai sosto ayto etsi....
+                        loss = criterion(D, K)
 
                         loss.backward(retain_graph=True)
 
@@ -909,7 +845,6 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
                         #         else:
                         #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
-                        optimizer.zero_grad()
                         optimizer.step()
 
                 cycle_time = time.time() - start_time
@@ -923,12 +858,7 @@ def track_nuscenes(data_split='train', match_threshold=11, save_root='/.results/
             # left while loop and mark this scene as processed
             processed_scene_tokens.add(scene_token)
 
-        # # finished tracking all scenes, write output data
-        # output_data = {'meta': meta, 'results': results}
-        # with open(output_path, 'w') as outfile:
-        #     json.dump(output_data, outfile)
-
-        print("Total Tracking took: %.3f for %d frames or %.1f FPS" % (
+        print("Total learning took: %.3f for %d frames or %.1f FPS" % (
         total_time, total_frames, total_frames / total_time))
 
     # save model after epochs
