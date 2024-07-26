@@ -456,15 +456,14 @@ class Modules(nn.Module):
 
     def G3(self, x):
 
-        x = x.to(device)
-        a = torch.empty(x.shape[0], x.shape[1])
-        b = torch.empty(x.shape[0], x.shape[1])
+        ds, ts, channels, height, width = x.shape
+        x_reshaped = x.view(-1, channels, height, width)
 
-        for i, d in enumerate(x):
-            ms = torch.cat([dt.unsqueeze(0) for dt in d], dim=0)
-            result = self.g3(ms)
-            a[i, :] = result[:, 0].squeeze()
-            b[i, :] = result[:, 0].squeeze()
+        result = self.g3(x_reshaped)
+
+        result_reshaped = result.view(ds, ts, -1)
+        a = result_reshaped[:, :, 0]
+        b = result_reshaped[:, :, 1]
 
         return a, b
 
