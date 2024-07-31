@@ -896,11 +896,9 @@ def track_nuscenes(match_threshold=11):
 
                         if state == 'train':
                             if D is None:
-                                print('amou')
                                 continue
+                                
                             optimizer.zero_grad()
-
-                            print('miou')
 
                             # D = D.to(device)
                             K = torch.tensor(K).to(device)
