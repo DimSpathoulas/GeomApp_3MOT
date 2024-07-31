@@ -8,7 +8,7 @@ import time
 import pickle
 import copy
 import argparse
-
+import json
 from nuscenes import NuScenes
 from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.detection.data_classes import DetectionBox
@@ -361,7 +361,6 @@ def associate_detections_to_trackers(matched_indices, distance_matrix, dets, trk
 
 
 def expand_and_concat(det_feats, trk_feats):
-
     if trk_feats.shape[0] == 0:
         return torch.empty((det_feats.shape[0], trk_feats.shape[0],
                             2 * det_feats.shape[1],
@@ -469,29 +468,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
 
-for param in model.g1.parameters():
-    param.requires_grad = True
-for param in model.g2.parameters():
-    param.requires_grad = True
-for param in model.g3.parameters():
-    param.requires_grad = False
-for param in model.g4.parameters():
-    param.requires_grad = False
-
-optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
-# PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
-# TORA MAUAINOYME POS NA MHN KANOYME LATHOS
-# AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
-criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
-EPOCHS = 10
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
 def hungarian_matching(estims, trues):
-
     cost_matrix = np.zeros((len(estims), len(trues)))
 
     for i, estim in enumerate(estims):
@@ -564,7 +547,6 @@ def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, t
 
 
 def distance_matrix(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state):
-
     D_mod = None
     D = np.empty((0, 0))
     K = np.empty((0, 0))
@@ -720,12 +702,12 @@ class AB3DMOT(object):
                 self.features.pop(i)
 
         if (len(ret) > 0):
-            print('in')
+            
             return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
 
         # FALSE DETECTION HANDLING
-        # D = np.empty((0, 0))
         return np.empty((0, 15 + 7)), D_module, K
+
 
 def format_sample_result(sample_token, tracking_name, tracker, prev_trackers):
     '''
@@ -777,7 +759,6 @@ def format_sample_result(sample_token, tracking_name, tracker, prev_trackers):
 
 
 def track_nuscenes(match_threshold=11):
-
     split_name = 'train'
 
     parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
@@ -789,9 +770,11 @@ def track_nuscenes(match_threshold=11):
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--detection_file', type=str,
                         default="../../data/tracking_input/sample_mini_train_v4.pkl",
-                        help='Path to the detections and characteristics')
+                        help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--model_state', type=str, default='g2_trained_model_test_1.pth',
                         help='destination and name for model')
+    parser.add_argument('--output_path', type=str, default='',
+                        help='destination for tracking results (leave blank if val state)')
 
     args = parser.parse_args()
     state = args.state
@@ -799,6 +782,38 @@ def track_nuscenes(match_threshold=11):
     data_root = args.data_root
     version = args.version
     model_state = args.model_state
+    output_path = args.output_path
+
+    if state == 'train':
+
+        for param in model.g1.parameters():
+            param.requires_grad = True
+        for param in model.g2.parameters():
+            param.requires_grad = True
+        for param in model.g3.parameters():
+            param.requires_grad = False
+        for param in model.g4.parameters():
+            param.requires_grad = False
+
+        optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
+        # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
+        # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
+        # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
+        criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
+        EPOCHS = 10
+
+    else:
+        for param in model.g1.parameters():
+            param.requires_grad = False
+        for param in model.g2.parameters():
+            param.requires_grad = False
+        for param in model.g3.parameters():
+            param.requires_grad = False
+        for param in model.g4.parameters():
+            param.requires_grad = False
+
+        EPOCHS = 1
+
 
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
@@ -891,7 +906,7 @@ def track_nuscenes(match_threshold=11):
                         if state == 'train':
                             if D is None:
                                 continue
-                                
+
                             optimizer.zero_grad()
 
                             # D = D.to(device)
@@ -900,12 +915,12 @@ def track_nuscenes(match_threshold=11):
 
                             loss.backward(retain_graph=False)  # sounds right
 
-                        # for name, param in model.named_parameters():
-                        #     if param.requires_grad:
-                        #         if param.grad is not None:
-                        #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
-                        #         else:
-                        #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
+                            # for name, param in model.named_parameters():
+                            #     if param.requires_grad:
+                            #         if param.grad is not None:
+                            #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
+                            #         else:
+                            #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
 
                             optimizer.step()
 
@@ -933,7 +948,22 @@ def track_nuscenes(match_threshold=11):
             total_time, total_frames, total_frames / total_time))
 
     # save model after epochs
-    torch.save(model.state_dict(), model_state)
+    if state == 'train':
+        torch.save(model.state_dict(), model_state)
+
+    # save tracking results after inference
+    else:
+        meta = {
+                "use_camera": True,
+                "use_lidar": True,
+                "use_radar": False,
+                "use_map": False,
+                "use_external": False
+        }
+
+        output_data = {'meta': meta, 'results': results}
+        with open(output_path, 'w') as outfile:
+            json.dump(output_data, outfile)
 
 
 if __name__ == '__main__':
