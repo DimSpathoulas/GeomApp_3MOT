@@ -192,7 +192,7 @@ class KalmanBoxTracker(object):
     """
     count = 0
 
-    def __init__(self, bbox3D, info, covariance_id=0, track_score=None, tracking_name='car',
+    def __init__(self, bbox3D, info, track_score=None, tracking_name='car',
                  use_angular_velocity=False):
         """
         Initialises a tracker using initial bounding box.
@@ -240,31 +240,14 @@ class KalmanBoxTracker(object):
                                   [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
                                   [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0],
                                   [0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0]])
-
-        # Initialize the covariance matrix, see covariance.py for more details
-        if covariance_id == 0:  # exactly the same as AB3DMOT baseline
-            # self.kf.R[0:,0:] *= 10.   # measurement uncertainty
-            self.kf.P[7:,
-            7:] *= 1000.  # state uncertainty, give high uncertainty to the unobservable initial velocities, covariance matrix
-            self.kf.P *= 10.
-
-            # self.kf.Q[-1,-1] *= 0.01    # process uncertainty
-            self.kf.Q[7:, 7:] *= 0.01
-        elif covariance_id == 1:  # for kitti car, not supported
-            covariance = Covariance(covariance_id)
-            self.kf.P = covariance.P
-            self.kf.Q = covariance.Q
-            self.kf.R = covariance.R
-        elif covariance_id == 2:  # for nuscenes
-            covariance = Covariance(covariance_id)
-            self.kf.P = covariance.P[tracking_name]
-            self.kf.Q = covariance.Q[tracking_name]
-            self.kf.R = covariance.R[tracking_name]
-            if not use_angular_velocity:
-                self.kf.P = self.kf.P[:-1, :-1]
-                self.kf.Q = self.kf.Q[:-1, :-1]
-        else:
-            assert (False)
+            
+        covariance = Covariance()
+        self.kf.P = covariance.P[tracking_name]
+        self.kf.Q = covariance.Q[tracking_name]
+        self.kf.R = covariance.R[tracking_name]
+        if not use_angular_velocity:
+            self.kf.P = self.kf.P[:-1, :-1]
+            self.kf.Q = self.kf.Q[:-1, :-1]
 
         self.kf.x[:7] = bbox3D.reshape((7, 1))
 
@@ -506,7 +489,7 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.1,
 
 
 class AB3DMOT(object):
-    def __init__(self, covariance_id=0, max_age=2, min_hits=3, tracking_name='car', use_angular_velocity=False,
+    def __init__(self, max_age=2, min_hits=3, tracking_name='car', use_angular_velocity=False,
                  tracking_nuscenes=False):
         """
         observation:
@@ -608,7 +591,7 @@ class AB3DMOT(object):
         for i in unmatched_dets:  # a scalar of index
             detection_score = info[i][-1]
             track_score = detection_score
-            trk = KalmanBoxTracker(dets[i, :], info[i, :], self.covariance_id, track_score, self.tracking_name,
+            trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name,
                                    use_angular_velocity)
             self.trackers.append(trk)
         i = len(self.trackers)
@@ -796,11 +779,10 @@ def track_nuscenes(data_split, covariance_id, match_distance, match_threshold, m
 if __name__ == '__main__':
     if len(sys.argv) != 9:
         print(
-            "Usage: python main.py data_split(train, val, test) covariance_id(0, 1, 2) match_distance(iou or m) match_threshold match_algorithm(greedy or h) use_angular_velocity(true or false) dataset save_root")
+            "Usage: python main.py data_split(train, val, test) match_distance(iou or m) match_threshold match_algorithm(greedy or h) use_angular_velocity(true or false) dataset save_root")
         sys.exit(1)
 
     data_split = sys.argv[1]
-    covariance_id = int(sys.argv[2])
     match_distance = sys.argv[3]
     match_threshold = float(sys.argv[4])
     match_algorithm = sys.argv[5]
@@ -812,5 +794,5 @@ if __name__ == '__main__':
         print('track kitti not supported')
     elif dataset == 'nuscenes':
         print('track nuscenes')
-        track_nuscenes(data_split, covariance_id, match_distance, match_threshold, match_algorithm, save_root,
+        track_nuscenes(data_split, match_distance, match_threshold, match_algorithm, save_root,
                        use_angular_velocity)
