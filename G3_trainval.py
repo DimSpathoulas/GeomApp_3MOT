@@ -24,20 +24,25 @@ import torch
 import torch.optim as optim
 from torch import nn
 
-from Nets import Modules
 from Kalman_Filter import KalmanBoxTracker
+from Nets import Modules
 from functions import create_box_annotations, format_sample_result
 from sub_mods import greedy_match, mahalanobis_distance, associate_detections_to_trackers, expand_and_concat
+
 
 NUSCENES_TRACKING_NAMES = [
     'car'
 ]
 
 
+# INITIALIZE AS GLOBAL SO THAT WE CAN CALL THESE EVERYWHERE
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
 
+
+# torch.autograd.set_detect_anomaly(True)
 
 def hungarian_matching(estims, trues):
     cost_matrix = np.zeros((len(estims), len(trues)))
@@ -86,7 +91,7 @@ def hungarian_matching_remake(estims, trues):
 
 
 def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
-    K = torch.ones_like(distance_matrix)
+    K = np.ones_like(distance_matrix)
 
     d_idx, d_gt_idx = hungarian_matching_remake(dets, curr_gts)
     t_idx, t_gt_idx = hungarian_matching_remake(trks, prev_gts)
@@ -111,20 +116,61 @@ def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, t
     return K
 
 
+def retrieve_pairs(K):
+    pos = []
+    neg = []
+
+    for i in range(K.shape[0]):
+        for j in range(K.shape[1]):
+            if K[i, j] == 0:
+                pos.append((i, j))
+            else:
+                neg.append((i, j))
+
+    return pos, neg
+
+
+def G3_NET_LOSS(distance_matrix=None, K=None):
+
+    pos, neg = retrieve_pairs(K)
+
+    T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 6.0, 3.0, 3.0])
+    L_contr, L_pos, L_neg, zero = [torch.tensor(0., device=device) for _ in range(4)]
+
+    for i, j in pos:
+        for ii, jj in neg:
+            L_contr += torch.max(zero, C_contr - (distance_matrix[i][j] - distance_matrix[ii][jj]))
+    L_contr = L_contr / (len(pos) * len(neg))
+
+    for i, j in pos:
+        L_pos += torch.max(zero, C_pos - (T - distance_matrix[i][j]))
+    L_pos = L_pos / len(pos)
+
+    for i, j in neg:
+        L_neg += torch.max(zero, C_neg - (T - distance_matrix[i][j]))
+    L_neg = L_neg / len(neg)
+
+    L_coef = L_contr + L_pos + L_neg
+
+    return L_coef
+
+
 def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state):
-    D_mod = None
     D = np.empty((0, 0))
-    K = np.empty((0, 0))
+    loss = None
 
     if d_t_map.shape[1] > 0:
         D_mod = model.G2(d_t_map)
-        D_mod = D_mod + mah_metric
+        a_mod, b_mod = model.G3(d_t_map)
+        point_five = torch.tensor(0.5).to(device)
+        D_mod = mah_metric + (a_mod * (D_mod - (point_five + b_mod)))
         D = D_mod.detach().cpu().numpy()
 
         if state == 'train':
             K = construct_K_matrix(distance_matrix=D_mod, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
+            loss = G3_NET_LOSS(distance_matrix=D_mod, K=K)
 
-    return D_mod, D, K
+    return D, loss
 
 
 class AB3DMOT(object):
@@ -219,7 +265,7 @@ class AB3DMOT(object):
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        D_module, D, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state)
+        D, loss = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state)
 
         matched_indexes = greedy_match(D)
 
@@ -267,17 +313,17 @@ class AB3DMOT(object):
                 self.features.pop(i)
 
         if (len(ret) > 0):
-            return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), loss  # x, y, z, theta, l, w, h, ID, other info, confidence
 
-        return np.empty((0, 15 + 7)), D_module, K
+        return np.empty((0, 15 + 7)), loss
 
 
 def track_nuscenes(match_threshold=11):
     split_name = 'train'
 
-    parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
+    parser = argparse.ArgumentParser(description="TrainVal G3 with lidar and camera detected characteristics")
     parser.add_argument('--state', type=str, default='train',
-                        help='train or val the G2 module')
+                        help='train or val the G3 module')
     parser.add_argument('--version', type=str, default='v1.0-mini',
                         help='NuScenes dataset version')
     parser.add_argument('--data_root', type=str, default='../../data/nuscenes/v1.0-mini',
@@ -287,8 +333,8 @@ def track_nuscenes(match_threshold=11):
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--model_state', type=str, default='trained_model_test_1.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='',
-                        help='destination for tracking results (leave blank if val state)')
+    parser.add_argument('--output_path', type=str, default='test.json',
+                        help='destination for tracking results in .json format (leave blank if val state)')
 
     args = parser.parse_args()
     state = args.state
@@ -298,25 +344,24 @@ def track_nuscenes(match_threshold=11):
     model_state = args.model_state
     output_path = args.output_path
 
+    model.load_state_dict(torch.load(model_state, map_location=device))
+
     if state == 'train':
 
         for param in model.g1.parameters():
             param.requires_grad = True
         for param in model.g2.parameters():
-            param.requires_grad = True
-        for param in model.g3.parameters():
             param.requires_grad = False
+        for param in model.g3.parameters():
+            param.requires_grad = True
         for param in model.g4.parameters():
             param.requires_grad = False
 
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
-        # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
-        # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
-        # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
-        criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
         EPOCHS = 10
 
     else:
+
         for param in model.g1.parameters():
             param.requires_grad = False
         for param in model.g2.parameters():
@@ -415,15 +460,13 @@ def track_nuscenes(match_threshold=11):
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
-                        trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
+                        trackers, loss = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         if state == 'train':
-                            if D is None:
+                            if loss is None:
                                 continue
 
                             optimizer.zero_grad()
-
-                            loss = criterion(D, K)
 
                             loss.backward(retain_graph=False)  # sounds right
 

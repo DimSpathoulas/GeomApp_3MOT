@@ -23,108 +23,53 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-
 from Nets import Modules
 from Kalman_Filter import KalmanBoxTracker
 from functions import create_box_annotations, format_sample_result
 from sub_mods import greedy_match, mahalanobis_distance, associate_detections_to_trackers, expand_and_concat
+
 
 NUSCENES_TRACKING_NAMES = [
     'car'
 ]
 
 
+# INITIALIZE AS GLOBAL SO THAT WE CAN CALL THESE EVERYWHERE
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = Modules()
 model.to(device)
 
 
-def hungarian_matching(estims, trues):
-    cost_matrix = np.zeros((len(estims), len(trues)))
+def distance_matrix_gen(d_t_map, mah_metric):
+
+    D = np.empty((0, 0))
+
+    if d_t_map.shape[1] > 0:
+        D_mod = model.G2(d_t_map)
+        a_mod, b_mod = model.G3(d_t_map)
+        point_five = torch.tensor(0.5).to(device)
+        D_mod = mah_metric + (a_mod * (D_mod - (point_five + b_mod)))
+        D = D_mod.detach().cpu().numpy()
+
+    return D
+
+
+def construct_C_matrix(estims, trues):
+
+    C = np.zeros((estims.shape[0], 1))
 
     for i, estim in enumerate(estims):
         for j, true in enumerate(trues):
             gt_center = np.array(true[:2], dtype=float)
             distance = np.linalg.norm(estim[:2] - gt_center)
-            cost_matrix[i, j] = distance
+            if distance <= 1.0:
+                C[i] = 1.0
+                break
 
-    row_ind, col_ind = linear_sum_assignment(cost_matrix)
+    C = torch.tensor(C, dtype=torch.float32).to(device)
 
-    return row_ind, col_ind
-
-
-def construct_K_matrix(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
-    # dist_m[0,0] is dets[0] and trks[0]
-    # dist_m[0,1] is dets[0] and trks[1]
-    # etc
-
-    K = torch.ones_like(distance_matrix)
-    d_idx, d_gt_idx = hungarian_matching(dets, curr_gts)
-    t_idx, t_gt_idx = hungarian_matching(trks, prev_gts)
-
-    for d, gt_d in zip(d_idx, d_gt_idx):
-        for t, gt_t in zip(t_idx, t_gt_idx):
-
-            center_det = dets[d][:2]
-            gt_center_det = np.array(curr_gts[gt_d][:2], dtype=float)
-
-            center_trk = trks[t][:2]
-            gt_center_trk = np.array(prev_gts[gt_t][:2], dtype=float)
-
-            dist_1 = np.linalg.norm(center_det - gt_center_det)
-            dist_2 = np.linalg.norm(center_trk - gt_center_trk)
-
-            if curr_gts[gt_d][7] == prev_gts[gt_t][7] and dist_1 <= threshold and dist_2 <= threshold:
-                K[d, t] = 0
-
-    return K
-
-
-def hungarian_matching_remake(estims, trues):
-    cost_matrix = np.linalg.norm(estims[:, :2, None] - np.array(trues)[:, :2].T, axis=1)
-    return linear_sum_assignment(cost_matrix)
-
-
-def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
-    K = torch.ones_like(distance_matrix)
-
-    d_idx, d_gt_idx = hungarian_matching_remake(dets, curr_gts)
-    t_idx, t_gt_idx = hungarian_matching_remake(trks, prev_gts)
-
-    curr_gts_array = np.array(curr_gts)
-    prev_gts_array = np.array(prev_gts)
-
-    for i, (d, gt_d) in enumerate(zip(d_idx, d_gt_idx)):
-        center_det = dets[d][:2]
-        gt_center_det = curr_gts_array[gt_d][:2].astype(float)
-        dist_1 = np.linalg.norm(center_det - gt_center_det)
-
-        for j, (t, gt_t) in enumerate(zip(t_idx, t_gt_idx)):
-            center_trk = trks[t][:2]
-            gt_center_trk = prev_gts_array[gt_t][:2].astype(float)
-            dist_2 = np.linalg.norm(center_trk - gt_center_trk)
-
-            if (curr_gts_array[gt_d][7] == prev_gts_array[gt_t][7] and
-                    dist_1 <= threshold and dist_2 <= threshold):
-                K[d, t] = 0
-
-    return K
-
-
-def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state):
-    D_mod = None
-    D = np.empty((0, 0))
-    K = np.empty((0, 0))
-
-    if d_t_map.shape[1] > 0:
-        D_mod = model.G2(d_t_map)
-        D_mod = D_mod + mah_metric
-        D = D_mod.detach().cpu().numpy()
-
-        if state == 'train':
-            K = construct_K_matrix(distance_matrix=D_mod, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
-
-    return D_mod, D, K
+    return C
 
 
 class AB3DMOT(object):
@@ -219,7 +164,7 @@ class AB3DMOT(object):
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        D_module, D, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state)
+        D = distance_matrix_gen(det_trk_matrix, D_mah_module)
 
         matched_indexes = greedy_match(D)
 
@@ -232,20 +177,29 @@ class AB3DMOT(object):
         for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
+
                 trk.update(dets[d, :][0], info[d, :][0])
-
                 detection_score = info[d, :][0][-1]
-
                 trk.track_score = detection_score
 
         # create and initialise new trackers for unmatched detections
-        for i in unmatched_dets:  # a scalar of index
-            detection_score = info[i][-1]
-            track_score = detection_score
-            trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
+        C = None
+        P = np.empty((0, 0))
 
-            self.trackers.append(trk)
-            self.features.append(det_feats[i].detach())  # addition  VERY IMPORTANT THAT I ADDED THE DETACH
+        if unmatched_dets.shape[0] > 0:
+            P = torch.zeros(dets.shape[0], 1, dtype=torch.float32).to(device)
+            unmatched_feats = det_feats[unmatched_dets]
+            P[unmatched_dets] = model.G4(unmatched_feats)
+            if self.state == 'train':
+                C = construct_C_matrix(dets, curr_gts)
+
+        for i in unmatched_dets:
+            if P[i] > 0.5:
+                detection_score = info[i][-1]
+                track_score = detection_score
+                trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
+                self.trackers.append(trk)
+                self.features.append(det_feats[i].detach())
 
         i = len(self.trackers)
 
@@ -267,17 +221,17 @@ class AB3DMOT(object):
                 self.features.pop(i)
 
         if (len(ret) > 0):
-            return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), P, C  # x, y, z, theta, l, w, h, ID, other info, confidence
 
-        return np.empty((0, 15 + 7)), D_module, K
+        return np.empty((0, 15 + 7)), P, C
 
 
 def track_nuscenes(match_threshold=11):
     split_name = 'train'
 
-    parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
+    parser = argparse.ArgumentParser(description="TrainVal G4 with lidar and camera detected characteristics")
     parser.add_argument('--state', type=str, default='train',
-                        help='train or val the G2 module')
+                        help='train or val the G4 module')
     parser.add_argument('--version', type=str, default='v1.0-mini',
                         help='NuScenes dataset version')
     parser.add_argument('--data_root', type=str, default='../../data/nuscenes/v1.0-mini',
@@ -287,8 +241,8 @@ def track_nuscenes(match_threshold=11):
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--model_state', type=str, default='trained_model_test_1.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='',
-                        help='destination for tracking results (leave blank if val state)')
+    parser.add_argument('--output_path', type=str, default='test.json',
+                        help='destination for tracking results in .json format (doesnt matter if state==train)')
 
     args = parser.parse_args()
     state = args.state
@@ -298,22 +252,21 @@ def track_nuscenes(match_threshold=11):
     model_state = args.model_state
     output_path = args.output_path
 
+    model.load_state_dict(torch.load(model_state, map_location=device))
+
     if state == 'train':
 
         for param in model.g1.parameters():
             param.requires_grad = True
         for param in model.g2.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in model.g3.parameters():
             param.requires_grad = False
         for param in model.g4.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
-        # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
-        # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
-        # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
-        criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
+        criterion = nn.BCELoss()
         EPOCHS = 10
 
     else:
@@ -415,15 +368,15 @@ def track_nuscenes(match_threshold=11):
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
-                        trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
+                        trackers, P, C = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         if state == 'train':
-                            if D is None:
+                            if C is None:
                                 continue
 
                             optimizer.zero_grad()
 
-                            loss = criterion(D, K)
+                            loss = criterion(P, C)
 
                             loss.backward(retain_graph=False)  # sounds right
 
@@ -441,8 +394,7 @@ def track_nuscenes(match_threshold=11):
                             # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
                             for i in range(trackers.shape[0]):
                                 sample_result, prev_trackers = format_sample_result(current_sample_token, tracking_name,
-                                                                                    trackers[i],
-                                                                                    prev_trackers)
+                                                                                    trackers[i], prev_trackers)
                                 results[current_sample_token].append(sample_result)
 
                 cycle_time = time.time() - start_time
