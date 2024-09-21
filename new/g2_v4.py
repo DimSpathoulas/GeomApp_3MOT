@@ -37,20 +37,19 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-
-from Nets.net_v3 import G1, G2
+from Nets.net_v3 import Feature_Fusion, Distance_Combination_Stage_1
 from functions.Kalman_Filter import KalmanBoxTracker
 from functions.outer_funcs import create_box_annotations, format_sample_result
 from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers, expand_and_concat
 
 NUSCENES_TRACKING_NAMES = [
-    'bicycle',
-    'bus',
+    # 'bicycle',
+    # 'bus',
     'car',
-    'motorcycle',
-    'pedestrian',
-    'trailer',
-    'truck'
+    # 'motorcycle',
+    # 'pedestrian',
+    # 'trailer',
+    # 'truck'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -93,14 +92,14 @@ def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, t
 
 
 
-def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state, g2):
+def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state, DCS1):
 
     K = None
 
     if d_t_map.shape[1] == 0:
         return None, np.empty((0, 0)), K
 
-    D_mod = g2(d_t_map)
+    D_mod = DCS1(d_t_map)
     D_mod = D_mod + mah_metric
     D = D_mod.detach().cpu().numpy()
 
@@ -112,7 +111,7 @@ def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, sta
 
 
 class AB3DMOT(object):
-    def __init__(self, max_age=2, min_hits=3, tracking_name='car', state=0, g1=None, g2=None):
+    def __init__(self, max_age=2, min_hits=3, tracking_name='car', state=0, FF=None, DCS1=None):
         """
         observation:
                           [0, 1, 2, 3, 4, 5, 6]
@@ -135,8 +134,8 @@ class AB3DMOT(object):
         self.features = []
         self.my_order = [0, 1, 2, 6, 3, 4, 5]  # x, y, z, rot_z, l, w, h
         self.my_order_back = [0, 1, 2, 4, 5, 6, 3]
-        self.g1 = g1
-        self.g2 = g2
+        self.FF = FF
+        self.DCS1 = DCS1
 
     def update(self, dets_all, match_threshold):
         """
@@ -201,14 +200,14 @@ class AB3DMOT(object):
         D_mah_module = torch.tensor(D_mah).to(device)
 
         # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-        det_feats = self.g1(feats, pcbs, cam_vecs)
+        det_feats = self.FF(feats, pcbs, cam_vecs)
 
         # det_feats = torch.tensor(pcbs).to(device=device) ########################################################################## KAI TO FALSE G1 PARMS ALLAJE
         # KAI TO DETOUCH ############ LINE 263
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        D_module, D, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state, self.g2)
+        D_module, D, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state, self.DCS1)
 
         matched_indexes = greedy_match(D)
 
@@ -253,7 +252,6 @@ class AB3DMOT(object):
             # remove dead tracks
             if (trk.time_since_update >= self.max_age):
                 self.trackers.pop(i)
-
                 self.features.pop(i)
 
         if (len(ret) > 0):
@@ -262,21 +260,21 @@ class AB3DMOT(object):
         return np.empty((0, 15 + 7)), D_module, K
 
 
-def save_models_combined(g1, g2, path):
+def save_models_combined(G1, G2, path):
     combined_state = {
-        'g1': g1.state_dict(),
-        'g2': g2.state_dict()
+        'G1': G1.state_dict(),
+        'G2': G2.state_dict()
     }
     torch.save(combined_state, path)
 
 
 def load_models_combined(path):
     combined_state = torch.load(path)
-    g1 = G1().to(device)
-    g2 = G2().to(device)
-    g1.load_state_dict(combined_state['g1'])
-    g2.load_state_dict(combined_state['g2'])
-    return g1, g2
+    FF = Feature_Fusion().to(device)
+    DCS1 = Distance_Combination_Stage_1().to(device)
+    FF.load_state_dict(combined_state['G1'])
+    DCS1.load_state_dict(combined_state['G2'])
+    return FF, DCS1
 
 def track_nuscenes(match_threshold=11):
 
@@ -295,7 +293,7 @@ def track_nuscenes(match_threshold=11):
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--model_state', type=str, default='model_test_1.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='',
+    parser.add_argument('--output_path', type=str, default='output_g2_v4.json',
                         help='destination for tracking results (leave blank if val state)')
 
     args = parser.parse_args()
@@ -307,18 +305,17 @@ def track_nuscenes(match_threshold=11):
     model_state = args.model_state
     output_path = args.output_path
 
-    g1 = G1().to(device)
-    g2 = G2().to(device)
-    # optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=0.001)
-    optimizer = torch.optim.Adam(list(g1.parameters()) + list(g2.parameters()), lr=0.001)
+    FF = Feature_Fusion().to(device)
+    DCS1 = Distance_Combination_Stage_1().to(device)
+    optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS1.parameters()), lr=0.001)
     # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
     # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
-    # AN KANAME ME TO 0 OS POSITIVE UA KANAME TRAIN POS NA EINAI GIA NA EIMASTE SOSTOI
-    criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability - gitai oxi crossentropyloss
+    criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability
     EPOCHS = 11
 
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
-
+    
+    ## NO NEED FOR IT ANYMORE FOR US
     # split_name = 'val' # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     # split_names = get_scenes_of_split(split_name=split_name, nusc=nusc)
     # split_scenes_tokens_list = [nusc.field2token(table_name='scene', field='name', query=scene_name)
@@ -354,7 +351,7 @@ def track_nuscenes(match_threshold=11):
             first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
             current_sample_token = first_sample_token
 
-            mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, g1=g1, g2=g2) for
+            mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, FF=FF, DCS1=DCS1) for
                             tracking_name in NUSCENES_TRACKING_NAMES}
 
 
@@ -419,7 +416,7 @@ def track_nuscenes(match_threshold=11):
 
                             optimizer.step()
 
-                        if epoch == 10:
+                        if epoch == 10: # meaning 11th
                             # (N, 9)
                             # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
                             for i in range(trackers.shape[0]):
@@ -462,7 +459,7 @@ def track_nuscenes(match_threshold=11):
     #     save_models_combined(g1, g2, model_state)
 
     # save tracking results after inference
-    save_models_combined(g1, g2, model_state)
+    save_models_combined(FF, DCS1, model_state)
     meta = {
         "use_camera": True,
         "use_lidar": True,
