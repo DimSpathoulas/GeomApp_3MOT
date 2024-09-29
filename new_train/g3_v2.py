@@ -1,13 +1,5 @@
 '''
-LEITOYRGEI ME VASH TO NET_V3
-PLEON TA G1 KAI G2 EINAI LOCAL KAI EISAGONTAI OS VARIABLES STA FUNCTIONS
-
-TO EPOCHS LEITOYRGEI KAI OS STATE (IF STATE/EPOCH == 10 DLD 11o RUN) GIA TO VAL
-
-OPOTE EDO XREIAZETAI NA VALEIS KAI TO TRAIN DATA KAI TO VAL DATA KAI UA PAREIS OS EJODO
-KAI TO TRAINED NET KAI TA TRACKS APO VAL GIA EVALUATION
-
-EXO KANEI TEST KAI GIA LR 0.01 ALLA DEN EVGALE KATI DIAFORETIKO
+AYTO UA TO ALLAJO ACCORDINGLY OTAN TREJEI TO G2
 '''
 
 from __future__ import print_function
@@ -35,7 +27,8 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-from Nets.net_v4 import Feature_Fusion, Distance_Combination_Stage_1
+
+from Nets.net_v3 import Feature_Fusion, Distance_Combination_Stage_2, Distance_Combination_Stage_1
 from functions.Kalman_Filter import KalmanBoxTracker
 from functions.outer_funcs import create_box_annotations, format_sample_result
 from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers, \
@@ -90,26 +83,66 @@ def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, t
     return K
 
 
-def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state, DCS1):
+def retrieve_pairs_remake(K):
+    pos_indices = torch.nonzero(K == 0, as_tuple=False)
+    neg_indices = torch.nonzero(K != 0, as_tuple=False)
+
+    pos = [tuple(idx) for idx in pos_indices.tolist()]
+    neg = [tuple(idx) for idx in neg_indices.tolist()]
+    # print('pos', pos, '\n', 'neg', neg, '\n\n', "K", K, '\n')
+    return pos, neg
+
+
+def criterion(distance_matrix=None, K=None):
+    pos, neg = retrieve_pairs_remake(K)
+
+    T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 7.0, 4.0, 4.0])
+
+    L_contr = L_pos = L_neg = torch.tensor(0., device=device)
+
+    if pos or neg:
+        pos_indices = torch.tensor(pos, device=device).T if pos else torch.empty((2, 0), device=device,
+                                                                                 dtype=torch.long)
+        neg_indices = torch.tensor(neg, device=device).T if neg else torch.empty((2, 0), device=device,
+                                                                                 dtype=torch.long)
+
+        pos_distances = distance_matrix[pos_indices[0], pos_indices[1]]
+        neg_distances = distance_matrix[neg_indices[0], neg_indices[1]]
+        # print(distance_matrix, '\n', 'pos', '\n', pos_distances, 'neg', '\n', neg_distances, '\n\n\n\n\n\n')
+
+        if pos and neg:
+            L_contr = torch.clamp(C_contr - (pos_distances.unsqueeze(1) - neg_distances.unsqueeze(0)), min=0).mean()
+
+        L_pos = torch.clamp(C_pos - (T - pos_distances), min=0).mean() if pos else torch.tensor(0., device=device)
+        L_neg = torch.clamp(C_neg - (neg_distances - T), min=0).mean() if neg else torch.tensor(0., device=device)
+
+    L_coef = L_contr + L_pos + L_neg
+
+    return L_coef
+
+
+def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state, DCS1, DCS2):
+    if d_t_map.shape[1] == 0:
+        return np.empty((0, 0)), None, None
+
     K = None
 
-    if d_t_map.shape[1] == 0:
-        return None, np.empty((0, 0)), K
-
     D_mod = DCS1(d_t_map)
-    D_mod = D_mod + mah_metric
-    D = D_mod.detach().cpu().numpy()
-    # K = torch.randint(0, 2, size=D_mod.shape).to(device)
-    # K = K.float()
+    a_mod, b_mod = DCS2(d_t_map)
+    point_five = torch.tensor(0.5).to(device)
+    D_mod = mah_metric + (a_mod * (D_mod - (point_five + b_mod)))
 
     if state != 10 and prev_gts.shape[0] != 0 and curr_gts.shape[0] != 0 and D_mod.shape[0] > 0:
         K = construct_K_matrix_remake(distance_matrix=D_mod, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
+        # loss = G3_NET_LOSS_remake_2(distance_matrix=D_mod, K=K)
 
-    return D_mod, D, K
+    D = D_mod.detach().cpu().numpy()
+
+    return D, D_mod, K
 
 
 class AB3DMOT(object):
-    def __init__(self, max_age=2, min_hits=3, tracking_name='car', state=0, FF=None, DCS1=None):
+    def __init__(self, max_age=2, min_hits=3, tracking_name='car', state=0, FF=None, DCS1=None, DCS2=None):
         """
         observation:
                           [0, 1, 2, 3, 4, 5, 6]
@@ -135,6 +168,7 @@ class AB3DMOT(object):
         self.state = state
         self.FF = FF
         self.DCS1 = DCS1
+        self.DCS2 = DCS2
 
     def update(self, dets_all, match_threshold):
         """
@@ -164,12 +198,6 @@ class AB3DMOT(object):
         print_debug = False
 
         dets = dets[:, self.my_order]
-
-        class_idx = NUSCENES_TRACKING_NAMES.index(self.tracking_name)
-        onehot_vector = torch.zeros(len(NUSCENES_TRACKING_NAMES))
-        onehot_vector[class_idx] = 1
-
-        class_onehot = onehot_vector.unsqueeze(0).repeat(dets.shape[0], 1)
 
         self.frame_count += 1
 
@@ -205,20 +233,16 @@ class AB3DMOT(object):
         D_mah_module = torch.tensor(D_mah).to(device)
 
         # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-        det_feats = self.FF(feats, pcbs, cam_vecs, class_onehot)
-
-        # det_feats = torch.tensor(pcbs).to(device=device) ########################################################################## KAI TO FALSE G1 PARMS ALLAJE
-        # KAI TO DETOUCH ############ LINE 263
+        det_feats = self.FF(feats, pcbs, cam_vecs)
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        D_module, D, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts, self.state,
-                                             self.DCS1)
+        D, D_m, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts,
+                                      self.state, self.DCS1, self.DCS2)
 
         matched_indexes = greedy_match(D)
 
-        matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes,
-                                                                                   distance_matrix=D,
+        matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(matched_indices=matched_indexes, distance_matrix=D,
                                                                                    dets=dets, trks=trks,
                                                                                    mahalanobis_threshold=match_threshold)
 
@@ -257,37 +281,30 @@ class AB3DMOT(object):
             # remove dead tracks
             if (trk.time_since_update >= self.max_age):
                 self.trackers.pop(i)
+
                 self.features.pop(i)
 
         if (len(ret) > 0):
-            return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), D_m, K  # x, y, z, theta, l, w, h, ID, other info, confidence
 
-        return np.empty((0, 15 + 7)), D_module, K
+        return np.empty((0, 15 + 7)), D_m, K
 
 
-def save_models_combined(G1, G2, path):
+def save_models_combined(G1, G2, G3, path):
     combined_state = {
         'G1': G1.state_dict(),
-        'G2': G2.state_dict()
+        'G2': G2.state_dict(),
+        'G3': G3.state_dict()
     }
     torch.save(combined_state, path)
 
 
-def load_models_combined(path):
+def load_models_combined(FF, DCS1, path):
     combined_state = torch.load(path)
-    FF = Feature_Fusion().to(device)
-    DCS1 = Distance_Combination_Stage_1().to(device)
     FF.load_state_dict(combined_state['G1'])
     DCS1.load_state_dict(combined_state['G2'])
     return FF, DCS1
 
-def compute_tracking_loss(criterion, D, K):
-    loss = torch.tensor(0.).to(device)
-
-    for i in range(D.shape[0]):
-        loss += criterion(D[i, :], K[i, :])
-
-    return loss
 
 def track_nuscenes(match_threshold=11):
     parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
@@ -301,9 +318,9 @@ def track_nuscenes(match_threshold=11):
     parser.add_argument('--dets_val', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
-    parser.add_argument('--model_state', type=str, default='g2_classes.pth',
+    parser.add_argument('--model_state', type=str, default='model_per_sample_2.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='g2_names_too.json',
+    parser.add_argument('--output_path', type=str, default='output_g3_only_contr.json',
                         help='destination for tracking results (leave blank if val state)')
 
     args = parser.parse_args()
@@ -316,22 +333,24 @@ def track_nuscenes(match_threshold=11):
 
     FF = Feature_Fusion().to(device)
     DCS1 = Distance_Combination_Stage_1().to(device)
-    optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS1.parameters()), lr=0.001)
-    # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
-    # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
-    criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability
-    # do i need to add 'reductio' ??? i think no
-    EPOCHS = 11
+    DCS2 = Distance_Combination_Stage_2().to(device)
+    FF, DCS1 = load_models_combined(FF, DCS1, path=model_state)
 
+    DCS1.eval()
+    for param in DCS1.parameters():
+        param.requires_grad = False
+
+    optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS2.parameters()), lr=0.001)
+    EPOCHS = 11
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
-    ## NO NEED FOR IT ANYMORE FOR US
-    # split_name = 'val' # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-    # split_names = get_scenes_of_split(split_name=split_name, nusc=nusc)
+    # split_names = get_scenes_of_split(split_name=state, nusc=nusc)
     # split_scenes_tokens_list = [nusc.field2token(table_name='scene', field='name', query=scene_name)
     #                             for scene_name in split_names]
     # split_scenes_tokens = [item for sublist in split_scenes_tokens_list for item in sublist]
     # split_scenes_tokens = set(split_scenes_tokens)
+
+    results = {}
 
     with open(dets_train, 'rb') as f:
         all_results = pickle.load(f)
@@ -341,16 +360,19 @@ def track_nuscenes(match_threshold=11):
 
     for epoch in range(EPOCHS):
 
-        results = {}
-
         print('epoch', epoch + 1)
 
         if epoch == 10:
             with open(dets_val, 'rb') as f:
                 all_results = pickle.load(f)
+
+            DCS2.eval()
+            for param in DCS2.parameters():
+                param.requires_grad = False
                 
             FF.eval()
-            DCS1.eval()
+            for param in FF.parameters():
+                param.requires_grad = False
 
         processed_scene_tokens = set()
 
@@ -364,8 +386,8 @@ def track_nuscenes(match_threshold=11):
             first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
             current_sample_token = first_sample_token
 
-            mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, FF=FF, DCS1=DCS1) for
-                            tracking_name in NUSCENES_TRACKING_NAMES}
+            mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, FF=FF, DCS1=DCS1, DCS2=DCS2)
+                            for tracking_name in NUSCENES_TRACKING_NAMES}
 
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             prev_trackers = {}
@@ -420,7 +442,6 @@ def track_nuscenes(match_threshold=11):
                         trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         if epoch < 10:
-
                             if D is None or K is None:
                                 continue
 
@@ -428,7 +449,7 @@ def track_nuscenes(match_threshold=11):
                             K_list.append(K)
 
 
-                        if epoch == 10:  # meaning 11th
+                        if epoch == 10:
                             # (N, 9)
                             # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
                             for i in range(trackers.shape[0]):
@@ -443,27 +464,27 @@ def track_nuscenes(match_threshold=11):
                     for D, K in zip(D_list, K_list):
 
                         loss = criterion(D,K)
-                        # loss = compute_tracking_loss(criterion, D, K)
                         total_loss += loss
 
                     total_loss.backward(retain_graph=False)
 
                     optimizer.step()
 
-                # print('\n\n\n NEW SAMPLE')
                 cycle_time = time.time() - start_time
                 total_time += cycle_time
 
                 prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
 
+            # left while loop and mark this scene as processed
             processed_scene_tokens.add(scene_token)
 
         print("Total learning took: %.3f for %d frames or %.1f FPS" % (
             total_time, total_frames, total_frames / total_time))
 
-    # save tracking results after inference
-    save_models_combined(FF, DCS1, model_state)
+    # save model after epochs
+    # save_models_combined(FF, DCS1, DCS2, model_state)
+
     meta = {
         "use_camera": True,
         "use_lidar": True,
@@ -471,12 +492,11 @@ def track_nuscenes(match_threshold=11):
         "use_map": False,
         "use_external": False
     }
-
     output_data = {'meta': meta, 'results': results}
     with open(output_path, 'w') as outfile:
         json.dump(output_data, outfile)
 
 
 if __name__ == '__main__':
-    print('G2 TRAIN-VAL')
+    print('G3 TRAIN-VAL')
     track_nuscenes()

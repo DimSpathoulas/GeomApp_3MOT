@@ -35,7 +35,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torch import nn
-from Nets.net_v4 import Feature_Fusion, Distance_Combination_Stage_1
+from Nets.net_v3 import Feature_Fusion, Distance_Combination_Stage_1
 from functions.Kalman_Filter import KalmanBoxTracker
 from functions.outer_funcs import create_box_annotations, format_sample_result
 from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers, \
@@ -205,7 +205,7 @@ class AB3DMOT(object):
         D_mah_module = torch.tensor(D_mah).to(device)
 
         # print('\n', self.tracking_name, '\n', dets.shape, '\ntrks', trks.shape)
-        det_feats = self.FF(feats, pcbs, cam_vecs, class_onehot)
+        det_feats = self.FF(feats, pcbs, cam_vecs)
 
         # det_feats = torch.tensor(pcbs).to(device=device) ########################################################################## KAI TO FALSE G1 PARMS ALLAJE
         # KAI TO DETOUCH ############ LINE 263
@@ -273,10 +273,8 @@ def save_models_combined(G1, G2, path):
     torch.save(combined_state, path)
 
 
-def load_models_combined(path):
+def load_models_combined(FF, DCS1, path):
     combined_state = torch.load(path)
-    FF = Feature_Fusion().to(device)
-    DCS1 = Distance_Combination_Stage_1().to(device)
     FF.load_state_dict(combined_state['G1'])
     DCS1.load_state_dict(combined_state['G2'])
     return FF, DCS1
@@ -301,9 +299,9 @@ def track_nuscenes(match_threshold=11):
     parser.add_argument('--dets_val', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
-    parser.add_argument('--model_state', type=str, default='g2_classes.pth',
+    parser.add_argument('--model_state', type=str, default='model_per_sample.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='g2_names_too.json',
+    parser.add_argument('--output_path', type=str, default='loaded_2.json',
                         help='destination for tracking results (leave blank if val state)')
 
     args = parser.parse_args()
@@ -316,6 +314,7 @@ def track_nuscenes(match_threshold=11):
 
     FF = Feature_Fusion().to(device)
     DCS1 = Distance_Combination_Stage_1().to(device)
+    FF, DCS1 = load_models_combined(FF, DCS1, model_state)
     optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS1.parameters()), lr=0.001)
     # PROSOXH: GIA EMAS TO POSITIVE EINAI TO 0
     # TORA MAUAINOYME POS NA MHN KANOYME LATHOS
@@ -339,131 +338,131 @@ def track_nuscenes(match_threshold=11):
     total_time = 0.0
     total_frames = 0
 
-    for epoch in range(EPOCHS):
+    epoch = 10
+    results = {}
 
-        results = {}
+    print('epoch', epoch + 1)
 
-        print('epoch', epoch + 1)
-
-        if epoch == 10:
-            with open(dets_val, 'rb') as f:
-                all_results = pickle.load(f)
-                
-            FF.eval()
-            DCS1.eval()
-
-        processed_scene_tokens = set()
-
-        for sample, sample_data in tqdm(all_results.items()):
-
-            scene_token = nusc.get('sample', sample)['scene_token']
-
-            if scene_token in processed_scene_tokens:
-                continue
-
-            first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
-            current_sample_token = first_sample_token
-
-            mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, FF=FF, DCS1=DCS1) for
-                            tracking_name in NUSCENES_TRACKING_NAMES}
-
-            prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-            prev_trackers = {}
-
-            while current_sample_token != '':
-
-                current_ground_truths = create_box_annotations(current_sample_token, nusc)
-
-                results[current_sample_token] = []
-
-                dets = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-                fvecs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-                pcbs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-                cam_vecs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-                info = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-
-                # CHECK AGAIN IF THIS IS NEEDED
-                try:
-                    ts = all_results[current_sample_token]
-                except:
-                    break
-
-                for i, item in enumerate(all_results[current_sample_token]):
-                    for name in NUSCENES_TRACKING_NAMES:
-                        for dets_outputs in item[name]:
-                            dets[name].append(dets_outputs['box'])
-                            pcbs[name].append(dets_outputs['point_cloud_features'])
-                            fvecs[name].append(dets_outputs['feature_vector'])
-                            cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
-                            info[name].append(dets_outputs['pred_score'])
-
-                dets_all = {tracking_name: {'dets': np.array(dets[tracking_name]),
-                                            'pcbs': np.array(pcbs[tracking_name]),
-                                            'fvecs': np.array(fvecs[tracking_name]),
-                                            'cam_vecs': np.array(cam_vecs[tracking_name]),
-                                            'info': np.array(info[tracking_name]),
-                                            'current_gts': np.array(current_ground_truths[tracking_name]),
-                                            'previous_gts': np.array(prev_ground_truths[tracking_name])
-                                            }
-                            for tracking_name in NUSCENES_TRACKING_NAMES}
-
-                total_frames += 1
-                start_time = time.time()
-
-                D_list = []
-                K_list = []
-                optimizer.zero_grad()
-
-                for tracking_name in NUSCENES_TRACKING_NAMES:
-                    if dets_all[tracking_name]['dets'].shape[0] > 0:
-
-                        trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
-
-                        if epoch < 10:
-
-                            if D is None or K is None:
-                                continue
-
-                            D_list.append(D)
-                            K_list.append(K)
+    if epoch == 10:
+        with open(dets_val, 'rb') as f:
+            all_results = pickle.load(f)
+        FF.eval()
+        DCS1.eval()
+        torch.set_grad_enabled(False)
 
 
-                        if epoch == 10:  # meaning 11th
-                            # (N, 9)
-                            # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
-                            for i in range(trackers.shape[0]):
-                                sample_result, prev_trackers = format_sample_result(current_sample_token, tracking_name,
-                                                                                    trackers[i],
-                                                                                    prev_trackers)
-                                results[current_sample_token].append(sample_result)
+    processed_scene_tokens = set()
 
-                if D_list:
+    for sample, sample_data in tqdm(all_results.items()):
 
-                    total_loss = torch.tensor(0.).to(device)
-                    for D, K in zip(D_list, K_list):
+        scene_token = nusc.get('sample', sample)['scene_token']
 
-                        loss = criterion(D,K)
-                        # loss = compute_tracking_loss(criterion, D, K)
-                        total_loss += loss
+        if scene_token in processed_scene_tokens:
+            continue
 
-                    total_loss.backward(retain_graph=False)
+        first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
+        current_sample_token = first_sample_token
 
-                    optimizer.step()
+        mot_trackers = {tracking_name: AB3DMOT(tracking_name=tracking_name, state=epoch, FF=FF, DCS1=DCS1) for
+                        tracking_name in NUSCENES_TRACKING_NAMES}
 
-                # print('\n\n\n NEW SAMPLE')
-                cycle_time = time.time() - start_time
-                total_time += cycle_time
+        prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+        prev_trackers = {}
 
-                prev_ground_truths = copy.deepcopy(current_ground_truths)
-                current_sample_token = nusc.get('sample', current_sample_token)['next']
+        while current_sample_token != '':
 
-            processed_scene_tokens.add(scene_token)
+            current_ground_truths = create_box_annotations(current_sample_token, nusc)
 
-        print("Total learning took: %.3f for %d frames or %.1f FPS" % (
-            total_time, total_frames, total_frames / total_time))
+            results[current_sample_token] = []
 
-    # save tracking results after inference
-    save_models_combined(FF, DCS1, model_state)
+            dets = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+            fvecs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+            pcbs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+            cam_vecs = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+            info = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+
+            # CHECK AGAIN IF THIS IS NEEDED
+            try:
+                ts = all_results[current_sample_token]
+            except:
+                break
+
+            for i, item in enumerate(all_results[current_sample_token]):
+                for name in NUSCENES_TRACKING_NAMES:
+                    for dets_outputs in item[name]:
+                        dets[name].append(dets_outputs['box'])
+                        pcbs[name].append(dets_outputs['point_cloud_features'])
+                        fvecs[name].append(dets_outputs['feature_vector'])
+                        cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
+                        info[name].append(dets_outputs['pred_score'])
+
+            dets_all = {tracking_name: {'dets': np.array(dets[tracking_name]),
+                                        'pcbs': np.array(pcbs[tracking_name]),
+                                        'fvecs': np.array(fvecs[tracking_name]),
+                                        'cam_vecs': np.array(cam_vecs[tracking_name]),
+                                        'info': np.array(info[tracking_name]),
+                                        'current_gts': np.array(current_ground_truths[tracking_name]),
+                                        'previous_gts': np.array(prev_ground_truths[tracking_name])
+                                        }
+                        for tracking_name in NUSCENES_TRACKING_NAMES}
+
+            total_frames += 1
+            start_time = time.time()
+
+            D_list = []
+            K_list = []
+            optimizer.zero_grad()
+
+            for tracking_name in NUSCENES_TRACKING_NAMES:
+                if dets_all[tracking_name]['dets'].shape[0] > 0:
+
+                    trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
+
+                    if epoch < 10:
+
+                        if D is None or K is None:
+                            continue
+
+                        D_list.append(D)
+                        K_list.append(K)
+
+
+                    if epoch == 10:  # meaning 11th
+                        # (N, 9)
+                        # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
+                        for i in range(trackers.shape[0]):
+                            sample_result, prev_trackers = format_sample_result(current_sample_token, tracking_name,
+                                                                                trackers[i],
+                                                                                prev_trackers)
+                            results[current_sample_token].append(sample_result)
+
+            if D_list:
+
+                total_loss = torch.tensor(0.).to(device)
+                for D, K in zip(D_list, K_list):
+
+                    loss = criterion(D,K)
+                    # loss = compute_tracking_loss(criterion, D, K)
+                    total_loss += loss
+
+                total_loss.backward(retain_graph=False)
+
+                optimizer.step()
+
+            # print('\n\n\n NEW SAMPLE')
+            cycle_time = time.time() - start_time
+            total_time += cycle_time
+
+            prev_ground_truths = copy.deepcopy(current_ground_truths)
+            current_sample_token = nusc.get('sample', current_sample_token)['next']
+
+        processed_scene_tokens.add(scene_token)
+
+    print("Total learning took: %.3f for %d frames or %.1f FPS" % (
+        total_time, total_frames, total_frames / total_time))
+
+# save tracking results after inference
+# save_models_combined(FF, DCS1, model_state)
     meta = {
         "use_camera": True,
         "use_lidar": True,

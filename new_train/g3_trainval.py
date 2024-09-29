@@ -35,13 +35,13 @@ from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_
     expand_and_concat
 
 NUSCENES_TRACKING_NAMES = [
-    # 'bicycle',
-    # 'bus',
+    'bicycle',
+    'bus',
     'car',
-    # 'motorcycle',
-    # 'pedestrian',
-    # 'trailer',
-    # 'truck'
+    'motorcycle',
+    'pedestrian',
+    'trailer',
+    'truck'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -86,14 +86,14 @@ def construct_K_matrix_remake(distance_matrix, dets, curr_gts, trks, prev_gts, t
 def retrieve_pairs_remake(K):
     pos_indices = torch.nonzero(K == 0, as_tuple=False)
     neg_indices = torch.nonzero(K != 0, as_tuple=False)
-    
+
     pos = [tuple(idx) for idx in pos_indices.tolist()]
     neg = [tuple(idx) for idx in neg_indices.tolist()]
 
     return pos, neg
 
 
-def G3_NET_LOSS_remake_2(distance_matrix=None, K=None):
+def criterion(distance_matrix=None, K=None):
     pos, neg = retrieve_pairs_remake(K)
 
     T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 6.0, 3.0, 3.0])
@@ -122,9 +122,9 @@ def G3_NET_LOSS_remake_2(distance_matrix=None, K=None):
 
 def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, state, DCS1, DCS2):
     if d_t_map.shape[1] == 0:
-        return np.empty((0, 0)), None
+        return np.empty((0, 0)), None, None
 
-    loss = None
+    K = None
 
     D_mod = DCS1(d_t_map)
     a_mod, b_mod = DCS2(d_t_map)
@@ -134,9 +134,9 @@ def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, sta
 
     if state != 10 and prev_gts.shape[0] != 0 and curr_gts.shape[0] != 0 and D_mod.shape[0] > 0:
         K = construct_K_matrix_remake(distance_matrix=D_mod, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
-        loss = G3_NET_LOSS_remake_2(distance_matrix=D_mod, K=K)
+        # loss = G3_NET_LOSS_remake_2(distance_matrix=D_mod, K=K)
 
-    return D, loss
+    return D, D_mod, K
 
 
 class AB3DMOT(object):
@@ -160,7 +160,7 @@ class AB3DMOT(object):
         self.reorder_back = [6, 5, 4, 0, 1, 2, 3]
         self.tracking_name = tracking_name
         self.features = []
-        self.my_order = [0, 1, 2, 6, 4, 3, 5]  # x, y, z, rot_z, l, w, h
+        self.my_order = [0, 1, 2, 6, 3, 4, 5]  # x, y, z, rot_z, l, w, h
         self.my_order_back = [0, 1, 2, 4, 5, 6, 3]
 
         self.state = state
@@ -235,7 +235,7 @@ class AB3DMOT(object):
 
         det_trk_matrix = expand_and_concat(det_feats, trks_feats)
 
-        D, loss = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts,
+        D, D_m, K = distance_matrix_gen(det_trk_matrix, D_mah_module, dets, curr_gts, trks, prev_gts,
                                       self.state, self.DCS1, self.DCS2)
 
         matched_indexes = greedy_match(D)
@@ -283,9 +283,9 @@ class AB3DMOT(object):
                 self.features.pop(i)
 
         if (len(ret) > 0):
-            return np.concatenate(ret), loss  # x, y, z, theta, l, w, h, ID, other info, confidence
+            return np.concatenate(ret), D_m, K  # x, y, z, theta, l, w, h, ID, other info, confidence
 
-        return np.empty((0, 15 + 7)), loss
+        return np.empty((0, 15 + 7)), D_m, K
 
 
 def save_models_combined(G1, G2, G3, path):
@@ -311,14 +311,14 @@ def track_nuscenes(match_threshold=11):
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
-    parser.add_argument('--model_state', type=str, default='/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/new_train/model_test_1.pth',
+    parser.add_argument('--model_state', type=str, default='model_per_sample_2.pth',
                         help='destination and name for model')
-    parser.add_argument('--output_path', type=str, default='output_g3.json',
+    parser.add_argument('--output_path', type=str, default='output_g3_complete.json',
                         help='destination for tracking results (leave blank if val state)')
 
     args = parser.parse_args()
@@ -333,6 +333,7 @@ def track_nuscenes(match_threshold=11):
     DCS1 = Distance_Combination_Stage_1().to(device)
     DCS2 = Distance_Combination_Stage_2().to(device)
     FF, DCS1 = load_models_combined(FF, DCS1, path=model_state)
+    DCS1.eval()
     optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS2.parameters()), lr=0.001)
     EPOCHS = 11
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
@@ -417,27 +418,22 @@ def track_nuscenes(match_threshold=11):
                 total_frames += 1
                 start_time = time.time()
 
+                D_list = []
+                K_list = []
+                optimizer.zero_grad()
+
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
 
-                        optimizer.zero_grad()
-
-                        trackers, loss = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
+                        trackers, D, K = mot_trackers[tracking_name].update(dets_all[tracking_name], match_threshold)
 
                         if epoch < 10:
-                            if loss is None:
-                                continue                          
+                            if D is None or K is None:
+                                continue
 
-                            loss.backward(retain_graph=False)  # sounds right
+                            D_list.append(D)
+                            K_list.append(K)
 
-                            # for name, param in model.named_parameters():
-                            #     if param.requires_grad:
-                            #         if param.grad is not None:
-                            #             print(f"Gradients of parameter '{name}' exist. Parameter was updated.")
-                            #         else:
-                            #             print(f"No gradients for parameter '{name}'. Parameter was not updated.")
-
-                            optimizer.step()
 
                         if epoch == 10:
                             # (N, 9)
@@ -447,6 +443,18 @@ def track_nuscenes(match_threshold=11):
                                                                                     trackers[i],
                                                                                     prev_trackers)
                                 results[current_sample_token].append(sample_result)
+
+                if D_list:
+
+                    total_loss = torch.tensor(0.).to(device)
+                    for D, K in zip(D_list, K_list):
+
+                        loss = criterion(D,K)
+                        total_loss += loss
+
+                    total_loss.backward(retain_graph=False)
+
+                    optimizer.step()
 
                 cycle_time = time.time() - start_time
                 total_time += cycle_time
@@ -461,7 +469,7 @@ def track_nuscenes(match_threshold=11):
             total_time, total_frames, total_frames / total_time))
 
     # save model after epochs
-    save_models_combined(FF, DCS1, DCS2, model_state)
+    # save_models_combined(FF, DCS1, DCS2, model_state)
 
     meta = {
         "use_camera": True,

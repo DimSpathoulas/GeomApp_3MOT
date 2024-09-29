@@ -3,8 +3,6 @@ KATHE Gi EINAI JEXORISTH KLASH ME DIKIA THS FORWARD
 
 '''
 
-
-
 from torch import nn
 import torch
 
@@ -18,18 +16,18 @@ class Feature_Fusion(nn.Module):
 
         # FEATURE FUSION MODULE
         self.G1 = nn.Sequential(
-            nn.Linear(1024 + 6, 1536),
+            nn.Linear(1024 + 6 + 7, 1536),
             nn.ReLU(),
             nn.Linear(1536, 4608),
             nn.ReLU(),
         )
 
-    def forward(self, F2D, F3D, cam_onehot_vector):
+    def forward(self, F2D, F3D, cam_onehot_vector, class_onehot):
         F2D = torch.tensor(F2D).to(device)
         F3D = torch.tensor(F3D).to(device)
         cam_onehot_vector = torch.tensor(cam_onehot_vector).to(device)
-
-        fused = torch.cat((F2D, cam_onehot_vector), dim=1)
+        class_onehot = torch.tensor(class_onehot).to(device)
+        fused = torch.cat((F2D, cam_onehot_vector, class_onehot), dim=1)
 
         fused = self.G1(fused)
 
@@ -37,6 +35,7 @@ class Feature_Fusion(nn.Module):
         fused = F3D + fused
 
         return fused
+
 
 class Distance_Combination_Stage_1(nn.Module):
 
@@ -96,7 +95,7 @@ class Track_Init(nn.Module):
 
     def __init__(self):
         super(Track_Init, self).__init__()
-        
+
         # TRACK INITIALIZATION MODULE
         self.g4 = nn.Sequential(
             nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=0, stride=1),
@@ -107,10 +106,9 @@ class Track_Init(nn.Module):
             nn.Linear(128, 1),
             nn.Sigmoid()
         )
-        
+
     def forward(self, x):
         score = self.g4(x)
-        
         return score
 
 

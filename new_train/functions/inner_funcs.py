@@ -117,16 +117,6 @@ def mahalanobis_distance(dets=None, trks=None, trks_S=None, print_debug=False):
     assert (trks is not None)
     assert (trks_S is not None)
 
-    if print_debug:
-        print('dets.shape: ', dets.shape)
-        print('dets: ', dets)
-        print('trks.shape: ', trks.shape)
-        print('trks: ', trks)
-        print('trks_S: ', trks_S)
-        S_inv = [np.linalg.inv(S_tmp) for S_tmp in trks_S]  # 7 x 7
-        S_inv_diag = [S_inv_tmp.diagonal() for S_inv_tmp in S_inv]  # 7
-        print('S_inv_diag: ', S_inv_diag)
-
     for d, det in enumerate(dets):
         for t, trk in enumerate(trks):
             S_inv = np.linalg.inv(trks_S[t])  # 7 x 7
