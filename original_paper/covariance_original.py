@@ -9,8 +9,8 @@ class Covariance(object):
     '''
 
     def __init__(self):
-        self.num_states = 11  # with angular velocity
 
+        self.num_states = 11  # with angular velocity
         self.num_observations = 7
         self.P = np.eye(self.num_states)
         self.Q = np.eye(self.num_states)
@@ -25,7 +25,8 @@ class Covariance(object):
             'trailer',
             'truck'
         ]
-
+        # nuscenes
+        # see get_nuscenes_stats.py for the details on  how the numbers come from
         # Kalman Filter state: [x, y, z, rot_z, l, w, h, x_dot, y_dot, z_dot, rot_z_dot]
 
         P = {
@@ -62,7 +63,6 @@ class Covariance(object):
                       9.45620374e-02, 8.38061721e-03, 1.41680460e-01]
         }
 
-        # noise
         R = {
             'bicycle': [0.05390982, 0.05039431, 0.01863044, 1.29464435, 0.02713823, 0.01169572, 0.01295084],
             'bus': [0.17546469, 0.13818929, 0.05947248, 0.1979503, 0.78867322, 0.05507407, 0.06684149],

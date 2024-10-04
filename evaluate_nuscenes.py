@@ -20,12 +20,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Evaluate nuScenes tracking results.',
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('result_path', type=str, help='The submission as a JSON file.')
-    parser.add_argument('--output_dir', type=str, default='~/nuscenes-metrics',
+    parser.add_argument('--output_dir', type=str, default='results_test_1',
                         help='Folder to store result metrics, graphs and example visualizations.')
     parser.add_argument('--eval_set', type=str, default='val',
                         help='Which dataset split to evaluate on, train, val or test.')
     #parser.add_argument('--dataroot', type=str, default='/data/sets/nuscenes',
-    parser.add_argument('--dataroot', type=str, default='../../data/nuscenes/v1.0-trainval',
+    parser.add_argument('--dataroot', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Default nuScenes data directory.')
     parser.add_argument('--version', type=str, default='v1.0-trainval',
                         help='Which version of the nuScenes dataset to evaluate on, e.g. v1.0-trainval.')
