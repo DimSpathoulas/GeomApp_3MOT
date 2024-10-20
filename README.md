@@ -8,7 +8,7 @@ This is the main module.
 - 
 
 
-python evaluate_nuscenes.py --output_dir results per_scene_lr001.json > results/per_scene_lr001.txt
+python evaluate_nuscenes.py --output_dir results small_t.json > results/small_t.txt
 
 
 python g2_v4.py

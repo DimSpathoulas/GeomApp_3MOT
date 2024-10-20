@@ -42,7 +42,7 @@ NUSCENES_TRACKING_NAMES = [
 ]
 
 
-def create_box_annotations(sample_token, nusc):
+def create_box_annotations(sample_token,nusc):
     ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
 
     # if ann_token is not None:  # not really needed
@@ -57,8 +57,6 @@ def create_box_annotations(sample_token, nusc):
 
         for tracking_name in NUSCENES_TRACKING_NAMES:
             if tracking_name in t_name:
-                # if tracking_name == 'truck':
-                #     pass
 
                 trs = np.array(ann_meta['translation'])
                 q = Quaternion(ann_meta['rotation'])
@@ -66,7 +64,7 @@ def create_box_annotations(sample_token, nusc):
                 size = np.array(ann_meta['size'])
 
                 gt_box = np.array([trs[0], trs[1], trs[2],
-                                   size[0], size[1], size[2], angle, ann_meta['instance_token']])
+                                   size[0], size[1], size[2], angle, ann_meta['instance_token'], sample_token])
 
                 ground_truths[tracking_name].append(gt_box)
 

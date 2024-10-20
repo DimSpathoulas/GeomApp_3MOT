@@ -45,13 +45,13 @@ from torch.utils.tensorboard import SummaryWriter
 
 
 NUSCENES_TRACKING_NAMES = [
-    # 'bicycle',
-    # 'bus',
+    'bicycle',
+    'bus',
     'car',
-    # 'motorcycle',
+    'motorcycle',
     'pedestrian',
-    # 'trailer',
-    # 'truck'
+    'trailer',
+    'truck'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -104,8 +104,8 @@ def distance_matrix_gen(d_t_map, mah_metric, dets, curr_gts, trks, prev_gts, sta
     if state < 10 and prev_gts.shape[0] != 0 and curr_gts.shape[0] != 0 and D_mod.shape[0] > 0:
         K = construct_K_matrix_remake(distance_matrix=D_mod, dets=dets, curr_gts=curr_gts, trks=trks, prev_gts=prev_gts)
 
-    # D = D_mod.detach().cpu().numpy()
-    D = mah_metric
+    D = D_mod.detach().cpu().numpy()
+    # D = mah_metric
 
     return D_mod, D, K
 
@@ -235,19 +235,27 @@ class AB3DMOT(object):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
                 trk.update(dets[d, :][0], info[d, :][0])
-
                 detection_score = info[d, :][0][-1]
-
                 trk.track_score = detection_score
+
+
+
+
 
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:  # a scalar of index
             detection_score = info[i][-1]
-            track_score = detection_score
-            trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
-
+            trk = KalmanBoxTracker(dets[i, :], info[i, :], detection_score, self.tracking_name)
             self.trackers.append(trk)
             self.features.append(det_feats[i].detach())  # addition  VERY IMPORTANT THAT I ADDED THE DETACH
+
+
+
+
+
+
+
+
 
         i = len(self.trackers)
 
@@ -266,6 +274,11 @@ class AB3DMOT(object):
             if (trk.time_since_update >= self.max_age):
                 self.trackers.pop(i)
                 self.features.pop(i)
+
+
+
+
+
 
         if (len(ret) > 0):
             return np.concatenate(ret), D_module, K  # x, y, z, theta, l, w, h, ID, other info, confidence
@@ -324,7 +337,9 @@ def track_nuscenes():
 
     FF = Feature_Fusion().to(device)
     DCS1 = Distance_Combination_Stage_1().to(device)
-    optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS1.parameters()), lr=0.001)
+    
+    optimizer = torch.optim.Adam(list(FF.parameters()) + list(DCS1.parameters()), lr=0.002)
+    # optimizer = torch.optim.Adam(params_to_optimize, lr=0.002, weight_decay=1e-5) 
 
     criterion = nn.BCEWithLogitsLoss()  # built-in sigmoid for stability
     # criterion = nn.BCELoss()
@@ -347,10 +362,12 @@ def track_nuscenes():
     total_time = 0.0
     total_frames = 0
 
-    writer = SummaryWriter('runs/mrcnn_train')
+    writer = SummaryWriter('runs/g2_lr0_002_per_scene')
 
     for epoch in range(EPOCHS):
 
+        FF.train()
+        DCS1.train()
         results = {}
 
         print('epoch', epoch + 1)
@@ -387,9 +404,10 @@ def track_nuscenes():
 
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             prev_trackers = {}
-            i = 0
+
+            scene_loss = torch.tensor(0.).to(device)
+
             while current_sample_token != '':
-                i = i + 1
                 current_ground_truths = create_box_annotations(current_sample_token, nusc)
 
                 results[current_sample_token] = []
@@ -422,9 +440,9 @@ def track_nuscenes():
                 total_frames += 1
                 start_time = time.time()
 
-                D_list = []
-                K_list = []
-                optimizer.zero_grad()
+                # D_list = []
+                # K_list = []
+                # optimizer.zero_grad()
 
                 for tracking_name in NUSCENES_TRACKING_NAMES:
                     if dets_all[tracking_name]['dets'].shape[0] > 0:
@@ -438,14 +456,14 @@ def track_nuscenes():
                             if D is None or K is None:  # could this be a problem??
                                 continue
 
-                            # loss = criterion(D, K)
+                            loss = criterion(D, K)
+                            scene_loss = scene_loss + loss
 
                             # loss.backward(retain_graph=False)
                             # optimizer.step()
 
-                            D_list.append(D)
-                            K_list.append(K)
-
+                            # D_list.append(D)
+                            # K_list.append(K)
 
                         if epoch == 10:  # meaning 11th
                             # (N, 9)
@@ -456,20 +474,20 @@ def track_nuscenes():
                                                                                     prev_trackers)
                                 results[current_sample_token].append(sample_result)
 
-                if D_list and epoch < 10:
+                # if D_list and epoch < 10:
 
-                    total_loss = torch.tensor(0.).to(device)
-                    for D, K in zip(D_list, K_list):
+                #     total_loss = torch.tensor(0.).to(device)
+                #     for D, K in zip(D_list, K_list):
 
-                        loss = criterion(D,K)
-                        # loss = compute_tracking_loss(criterion, D, K)
-                        total_loss = total_loss + loss
+                #         loss = criterion(D,K)
+                #         # loss = compute_tracking_loss(criterion, D, K)
+                #         total_loss = total_loss + loss
 
-                    total_loss.backward(retain_graph=False)
+                #     total_loss.backward(retain_graph=False)
 
-                    optimizer.step()
+                #     optimizer.step()
 
-                    epoch_loss = epoch_loss + total_loss
+                #     epoch_loss = epoch_loss + total_loss
 
                 # print('\n\n\n NEW SAMPLE')
                 cycle_time = time.time() - start_time
@@ -477,6 +495,14 @@ def track_nuscenes():
                 # print('\n\n\nnew samle!!!!!!!!!!\n\n\n')
                 prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
+
+            if epoch < 10:
+                optimizer.zero_grad()
+                scene_loss.backward()
+                # torch.nn.utils.clip_grad_norm_(COMB.parameters(), max_norm=1.0)
+                optimizer.step()
+
+                epoch_loss = epoch_loss + scene_loss
 
             processed_scene_tokens.add(scene_token)
 
@@ -486,14 +512,20 @@ def track_nuscenes():
         writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
 
         for name, param in FF.named_parameters():
-            if param.requires_grad:
-                writer.add_histogram(f'FF_gradients/{name}', param.grad, epoch)
-                writer.add_histogram(f'FF_weights/{name}', param.data, epoch)
+            if param.grad is not None:
+                writer.add_scalar(f'Gradients/{name}/norm', param.grad.norm().item(), epoch)
+                writer.add_histogram(f'Gradients/{name}/histogram', param.grad, epoch)
+                writer.add_histogram(f'Weights/{name}/histogram', param.data, epoch)
+                writer.add_scalar(f'Gradients/Mean/{name}', param.grad.mean().item(), epoch)
+                writer.add_scalar(f'Gradients/Std/{name}', param.grad.std().item(), epoch)
 
         for name, param in DCS1.named_parameters():
-            if param.requires_grad:
-                writer.add_histogram(f'DCS1_gradients/{name}', param.grad, epoch)
-                writer.add_histogram(f'DCS1_weights/{name}', param.data, epoch)
+            if param.grad is not None:
+                writer.add_scalar(f'Gradients/{name}/norm', param.grad.norm().item(), epoch)
+                writer.add_histogram(f'Gradients/{name}/histogram', param.grad, epoch)
+                writer.add_histogram(f'Weights/{name}/histogram', param.data, epoch)
+                writer.add_scalar(f'Gradients/Mean/{name}', param.grad.mean().item(), epoch)
+                writer.add_scalar(f'Gradients/Std/{name}', param.grad.std().item(), epoch)
         
         writer.flush()
 

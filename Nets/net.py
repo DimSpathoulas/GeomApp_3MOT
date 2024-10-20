@@ -2,11 +2,27 @@
 KATHE Gi EINAI JEXORISTH KLASH ME DIKIA THS FORWARD
 
 '''
-
-
-
 from torch import nn
 import torch
+
+
+def initialize_weights(model):
+    for m in model.modules():
+        if isinstance(m, (nn.Linear, nn.Conv2d)):
+            nn.init.xavier_uniform_(m.weight, gain=nn.init.calculate_gain('relu'))
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0.01)  # Small positive bias
+
+# def initialize_weights(model):
+#     for m in model.modules():
+#         if isinstance(m, nn.Linear):
+#             nn.init.kaiming_uniform_(m.weight, a=0.01)  # For ReLU activation
+#             if m.bias is not None:
+#                 nn.init.constant_(m.bias, 0)
+#         elif isinstance(m, nn.Conv2d):
+#             nn.init.kaiming_uniform_(m.weight, a=0.01)  # For ReLU activation
+#             if m.bias is not None:
+#                 nn.init.constant_(m.bias, 0)
 
 
 class Feature_Fusion(nn.Module):
@@ -18,9 +34,11 @@ class Feature_Fusion(nn.Module):
         self.G1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
-            nn.Linear(1536, 4608),
-            nn.ReLU()
+            nn.Linear(1536, 4608)
+            # nn.ReLU()
         )
+
+        initialize_weights(self)
 
     def forward(self, F2D, F3D, cam_onehot_vector):
 
@@ -48,6 +66,8 @@ class Distance_Combination_Stage_1(nn.Module):
             nn.Linear(128, 1)
         )
 
+        initialize_weights(self)
+
     def forward(self, x):
         ds, ts, channels, height, width = x.shape
         x_reshaped = x.view(-1, channels, height, width)
@@ -73,6 +93,8 @@ class Distance_Combination_Stage_2(nn.Module):
             nn.ReLU(),
             nn.Linear(128, 2)
         )
+
+        initialize_weights(self)
 
     def forward(self, x):
         ds, ts, channels, height, width = x.shape
@@ -102,7 +124,9 @@ class Track_Init(nn.Module):
             nn.Linear(128, 1),
             nn.Sigmoid()
         )
-        
+
+        initialize_weights(self)
+
     def forward(self, x):
         score = self.g4(x)
         

@@ -1,5 +1,15 @@
-**.pth
-**.json
-**.pyc
-**.pdf
-**.txt
+# Exclude specific file types
+*.pth
+*.json
+*.pyc
+*.pdf
+*.txt
+*.png
+*.iti
+*.pkl
+
+# Exclude runs directory
+/runs/
+
+# Exclude features directory
+/features/

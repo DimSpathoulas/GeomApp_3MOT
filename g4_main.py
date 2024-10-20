@@ -214,7 +214,6 @@ class AB3DMOT(object):
         for t, trk in enumerate(self.trackers):
             if t not in unmatched_trks:
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
-
                 trk.update(dets[d, :][0], info[d, :][0])
                 detection_score = info[d, :][0][-1]
                 trk.track_score = detection_score
@@ -223,25 +222,26 @@ class AB3DMOT(object):
         C = P_l = None
 
         if unmatched_dets.shape[0] > 0:
-
             P = torch.zeros(dets.shape[0], 1).to(device)
             unmatched_feats = det_feats[unmatched_dets]
             P[unmatched_dets] = self.TRIN(unmatched_feats)
-
             if self.state < 10 and curr_gts.shape[0] != 0:
-                # C = construct_C_matrix_remake(dets[unmatched_dets], curr_gts)
-
-                C = torch.randint(0, 2, size=(unmatched_feats.shape[0], 1)).float().to(device)
-
+                C = construct_C_matrix_remake(dets[unmatched_dets], curr_gts)
                 P_l = P[unmatched_dets]
 
         for i in unmatched_dets:
             if P[i] > 0.5:
                 detection_score = info[i][-1]
-                track_score = detection_score
-                trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, self.tracking_name)
+                trk = KalmanBoxTracker(dets[i, :], info[i, :], detection_score, self.tracking_name)
                 self.trackers.append(trk)
                 self.features.append(det_feats[i].detach())
+
+
+
+
+
+
+
 
         i = len(self.trackers)
 
@@ -261,6 +261,11 @@ class AB3DMOT(object):
                 self.trackers.pop(i)
 
                 self.features.pop(i)
+
+
+
+
+
 
         if (len(ret) > 0):
             return np.concatenate(ret), P_l, C  # x, y, z, theta, l, w, h, ID, other info, confidence
