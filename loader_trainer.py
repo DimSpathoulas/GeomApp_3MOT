@@ -77,13 +77,13 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_train.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
 
-    parser.add_argument('--trainval', type=str, default=1,
+    parser.add_argument('--trainval', type=str, default=0,
                         help='Set this to one if you want Train-Val in one go.\
                         This way output will be both the model and tracks (will overwrite arg training)')
     
@@ -92,11 +92,11 @@ def track_nuscenes():
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='model_1.pth',
+    parser.add_argument('--load_model_state', type=str, default='model_g2_perclass.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='G2_train_split.pth',
+    parser.add_argument('--save_model_state', type=str, default='model_g2_perclass.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='G2_train_split.json',
+    parser.add_argument('--output_path', type=str, default='dist_module.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -134,14 +134,14 @@ def track_nuscenes():
         # scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
         Tracker.G1.train()
         Tracker.G2.train()
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.BCELoss()
 
     if state == 1:
         params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G3.parameters())
         Tracker.G2.eval()
         for param in Tracker.G2.parameters():
             param.requires_grad = False
-        optimizer = torch.optim.Adam(params_to_optimize, lr=0.002)
+        optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
         Tracker.G1.train()
         Tracker.G3.train()
         criterion = None
@@ -154,7 +154,7 @@ def track_nuscenes():
         Tracker.G3.eval()
         for param in Tracker.G3.parameters():
             param.requires_grad = False
-        optimizer = torch.optim.Adam(params_to_optimize, lr=0.002)
+        optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
         Tracker.G1.train()
         Tracker.G4.train()
         criterion = nn.BCELoss()
@@ -174,7 +174,7 @@ def track_nuscenes():
     total_time = 0.0
     total_frames = 0
 
-    writer = SummaryWriter('runs/G2_train_split')
+    writer = SummaryWriter('runs/empty')
 
     for epoch in range(EPOCHS):
 
@@ -182,7 +182,7 @@ def track_nuscenes():
 
         print('epoch', epoch + 1)
 
-        epoch_loss = torch.tensor(0.).to(device)
+        epoch_loss = None
 
         if epoch == EPOCHS - 1:
             training = False
@@ -221,8 +221,8 @@ def track_nuscenes():
             current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             prev_trackers = {}
 
-            optimizer.zero_grad()
-            scene_loss = torch.tensor(0.).to(device)
+            # optimizer.zero_grad()
+            # scene_loss = None
 
             while current_sample_token != '':
                 
@@ -267,19 +267,31 @@ def track_nuscenes():
                 start_time = time.time()
 
                 # optimizer.zero_grad()
-                # sample_loss = torch.tensor(0.).to(device)
-
+                # sample_loss = None
+                
                 # train
                 if epoch < EPOCHS - 1:
                     for tracking_name in NUSCENES_TRACKING_NAMES:
-                        if dets_all[tracking_name]['dets'].shape[0] > 0 and dets_all[tracking_name]['current_gts'].shape[0] > 0:
+                        if dets_all[tracking_name]['dets'].shape[0] > 0\
+                        and dets_all[tracking_name]['current_gts'].shape[0] > 0\
+                        and dets_all[tracking_name]['previous_gts'].shape[0] > 0:
                             
+                            optimizer.zero_grad()
                             trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
 
                             if loss is not None:
-                                scene_loss = scene_loss + loss
+                                loss.backward()
+                                torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
+                                optimizer.step()
 
-                                # sample_loss = sample_loss + loss
+                            # if loss is not None:
+                            #     if scene_loss is None:
+                            #     # if sample_loss is None:  
+                            #         # sample_loss = loss
+                            #         scene_loss = loss
+                            #     else:
+                            #         # sample_loss = sample_loss + loss
+                            #         scene_loss = scene_loss + loss
 
                 # val
                 if epoch == EPOCHS - 1 and state > 0:
@@ -300,21 +312,22 @@ def track_nuscenes():
                 cycle_time = time.time() - start_time
                 total_time += cycle_time
 
-                # if epoch < EPOCHS - 1:
+                # if epoch < EPOCHS - 1 and sample_loss is not None:
                 #     sample_loss.backward()
                 #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
                 #     optimizer.step()
-                #     epoch_loss = epoch_loss + sample_loss
+                #     epoch_loss = epoch_loss + sample_loss.detach()
 
                 # prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
 
-            if epoch < EPOCHS - 1:
-                scene_loss.backward()
-                torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
-                optimizer.step()
+            # if epoch < EPOCHS - 1:
+            #     print(scene_loss)
+            #     scene_loss.backward()
+            #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
+            #     optimizer.step()
                 
-                epoch_loss = epoch_loss + scene_loss
+                # epoch_loss = epoch_loss + scene_token
 
 
             processed_scene_tokens.add(scene_token)
@@ -324,7 +337,7 @@ def track_nuscenes():
         print("Total learning took: %.3f for %d frames or %.1f FPS" % (
             total_time, total_frames, total_frames / total_time))
 
-        writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
+        # writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
 
         # scheduler.step(epoch_loss.item())
 

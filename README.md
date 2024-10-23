@@ -8,7 +8,7 @@ This is the main module.
 - 
 
 
-python evaluate_nuscenes.py --output_dir results small_t.json > results/small_t.txt
+python evaluate_nuscenes.py --output_dir results dist_module.json > results/dist_module.txt
 
 
 python g2_v4.py

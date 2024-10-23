@@ -419,7 +419,7 @@ def feature_analysis():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--data', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_057.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
 
     args = parser.parse_args()
@@ -530,7 +530,7 @@ def feature_analysis():
     # visualize_lda_3d(pcds_all, fvs_all)
     # print('done with LDA 3D')
 
-    visualize_features_multiprocessing(pcds_all, fvs_all)
+    # visualize_features_multiprocessing(pcds_all, fvs_all)
 
 
 if __name__ == '__main__':

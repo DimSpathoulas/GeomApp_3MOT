@@ -7,14 +7,16 @@ import torch
 from torch import nn
 from collections import defaultdict
 from functions.Kalman_Filter import KalmanBoxTracker
-from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers
+from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers_K, associate_detections_to_trackers
 from itertools import product
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class LayerNorm1d(nn.Module):
     def forward(self, x):
         return nn.functional.layer_norm(x, x.shape[1:])
+
 
 class TrackerNN(nn.Module):
     def __init__(self):
@@ -25,7 +27,7 @@ class TrackerNN(nn.Module):
             nn.Linear(1024 + 6, 1536),
             # LayerNorm1d(),
             nn.ReLU(),
-            nn.Dropout(0.2),
+            # nn.Dropout(0.2),
             nn.Linear(1536, 4608)
         )
         
@@ -37,8 +39,9 @@ class TrackerNN(nn.Module):
             nn.Linear(256, 128),
             # LayerNorm1d(),
             nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(128, 1)
+            # nn.Dropout(0.1),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
         )
 
         self.G3 = nn.Sequential(
@@ -47,6 +50,7 @@ class TrackerNN(nn.Module):
             nn.Flatten(),
             nn.Linear(256, 128),
             nn.ReLU(),
+            # nn.Dropout(0.2),
             nn.Linear(128, 2)
         )
 
@@ -61,27 +65,39 @@ class TrackerNN(nn.Module):
         )
 
         # WEIGHT INIT
-        self.apply(self.initialize_weights)
+        # self.apply(self.initialize_weights)
         
         # INIT STATES - WILL BE CLEARED AFTER EACH SCENE
         self.tracking_states = {}
 
+
     @staticmethod
     def initialize_weights(m):
         if isinstance(m, nn.Linear):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
+            # Check if this is the last layer before sigmoid
+            if isinstance(getattr(m, '_next_module', None), nn.Sigmoid):
+                # Initialize the last layer with smaller weights
+                nn.init.xavier_normal_(m.weight, gain=0.01)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, -2)  # Start with lower values before sigmoid
+            else:
+                # For other layers, use Kaiming init
+                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+                    
         elif isinstance(m, nn.Conv2d):
-            nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+
 
     def clear_tracking_states(self):
         """Clear all tracking states."""
         self.tracking_states.clear()
+
+
     # Initialize AB3DMOT attributes - CALL FOR EACH NEW SCENE
-    # training and state are constant for all scenes
     def reinit_ab3dmot(self, tracking_name, max_age=2, min_hits=3, training=False, state=0, criterion=None):
         self.tracking_states[tracking_name] = {
             'max_age': max_age,
@@ -97,6 +113,7 @@ class TrackerNN(nn.Module):
         self.training = training
         self.state = state
         self.criterion = criterion
+
 
     # EXPAND AND CONCAT FOR G2 G3
     def expand_and_concat(self, det_feats, trk_feats):
@@ -115,6 +132,7 @@ class TrackerNN(nn.Module):
 
         return map
 
+
     # USED IN construct_K_matrix
     def hungarian_matching(self, estims, trues):
         if len(estims) == 0 or len(trues) == 0:
@@ -127,6 +145,7 @@ class TrackerNN(nn.Module):
         cost_matrix = np.linalg.norm(estims_array[:, np.newaxis] - trues_array, axis=2)
 
         return linear_sum_assignment(cost_matrix)
+
 
     # K GT IND MATRIX COMPUTER FOR DSC1 AND DSC2
     def construct_K_matrix(self, distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
@@ -162,6 +181,7 @@ class TrackerNN(nn.Module):
 
         return K
 
+
     # PART OF DCS2 COSTUM LOSS FUNCTION
     def retrieve_pairs_remake(self, K):
         pos_indices = torch.nonzero(K == 0, as_tuple=False)
@@ -172,11 +192,12 @@ class TrackerNN(nn.Module):
         # print('pos', pos, '\n', 'neg', neg, '\n\n', "K", K, '\n')
         return pos, neg
 
+
     # COSTUM DCS2 (G3) LOSS FUNCTION
     def Criterion(self, distance_matrix=None, K=None):
         pos, neg = self.retrieve_pairs_remake(K)
 
-        T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 8.0, 5.0, 5.0])
+        T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 6.0, 3.0, 3.0])
         L_contr = L_pos = L_neg = torch.tensor(0., device=device)
 
         if pos or neg:
@@ -199,6 +220,7 @@ class TrackerNN(nn.Module):
 
         return L_coef
 
+
     # CREATE C MATRIX (GTS) FOR TRACK INIT
     def construct_C_matrix(self, estims, trues):
         estims_xy = estims[:, :2]
@@ -216,7 +238,7 @@ class TrackerNN(nn.Module):
     
     def construct_C_matrix2(self, estimates, truths):
         estimates_xy = estimates[:, :2]
-        truths_xy = torch.as_tensor(truths[:, :2], dtype=torch.float32) # Assuming truths is already a torch tensor
+        truths_xy = torch.as_tensor(truths[:, :2], dtype=torch.float32)
 
         distances = torch.norm(estimates_xy[:, None] - truths_xy, dim=2)
         min_distances = torch.min(distances, dim=1).values
@@ -225,12 +247,14 @@ class TrackerNN(nn.Module):
         
         return C
 
+
+
+    # SUB-FORWARDS
     def feature_fusion(self, F2D, F3D, cam_onehot_vector):
         fused = torch.cat((F2D, cam_onehot_vector), dim=1)
         fused = self.G1(fused)
         fused = fused.reshape(fused.shape[0], 512, 3, 3)
         fused = F3D + fused
-
         return fused
 
     def distance_combination_stage_1(self, x):
@@ -258,9 +282,6 @@ class TrackerNN(nn.Module):
         return self.G4(x)
 
 
-
-
-
     def forward(self, dets_all, tracking_name):  # FOR EACH SAMPLE IN EACH SCENE FORWARD BASED ON self.state
 
         tracking_state = self.tracking_states[tracking_name]
@@ -284,7 +305,6 @@ class TrackerNN(nn.Module):
         # LOAD AND ORDER DETS BASED ON KALMAN FILTER
         dets = dets[:, tracking_state['order']]
  
-
         # LOAD TRACK FEATURES IF EXISTANT
         if tracking_state['features']:
             trks_feats = torch.stack([feat for feat in tracking_state['features']], dim=0)
@@ -294,18 +314,10 @@ class TrackerNN(nn.Module):
         # LOAD CORRESPONDING TRACKS IF EXISTANT
         trks = np.zeros((len(tracking_state['trackers']), 7))  # N x 7
         
-        # print('dets', dets.shape, trks.shape, trks_feats.shape, tracking_name, '\n\n')
-        # [PREDICTION STEP
-        to_del = []
+        # PREDICTION STEP
         for t, trk in enumerate(trks):
             pos = tracking_state['trackers'][t].predict().reshape((-1, 1))
             trk[:] = pos[:7].flatten()
-            if np.any(np.isnan(pos)):
-                to_del.append(t)
-
-        for t in reversed(to_del):
-            tracking_state['trackers'].pop(t)
-            tracking_state['features'].pop(t)
 
         # COMPUTE S MATRIX
         trks_S = [np.matmul(np.matmul(tracker.kf.H, tracker.kf.P), tracker.kf.H.T) + tracker.kf.R
@@ -330,46 +342,54 @@ class TrackerNN(nn.Module):
         if self.state >= 1:
             point_five = torch.tensor(0.5).to(device)
             a, b = self.distance_combination_stage_2(feature_map)
+
+            K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
+                                    prev_gts=prev_gts)
+
             D_module = D_mah + (a * (D_feat - (point_five + b)))
 
+            print(D_feat, '\n', a, b, '\n', D_module, '\n', D_mah, '\n', K, '\n\n')
 
-        # IF TRAIN AND WE TRAIN FOR D_FEAT
+        # IF WE TRAIN FOR D_FEAT
         # THERE IS NO VAL MODE IN STAGE 1 OF DC
         if self.training == True and self.state == 0:
-            tracking_state['mahanalobis_thresh'] = 0.1
+            # tracking_state['mahanalobis_thresh'] = 0.1
             K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
-                                            prev_gts=prev_gts)                  # K = torch.randint(0, 2, D_mah.shape, dtype=torch.float, device=device)
+                                            prev_gts=prev_gts)  
+                            # K = torch.randint(0, 2, D_mah.shape, dtype=torch.float, device=device)
 
+            # print(D_feat, K)
+            
             if K.shape[0] > 0:
-                loss = self.criterion(D_feat, K)   # criterion is nn.BCEWithLogitsLoss()
-                D = K.detach().cpu().numpy()  # set D = K for the perfect matching
+                n_non_matches = max((K == 1).sum(), 1) 
+                n_matches = max((K == 0).sum(), 1)
+                pos_weight = (n_matches / n_non_matches) * (K.shape[0]+K.shape[1])
+                criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
+                loss = criterion(D_feat, K)
 
-            else:  # we are here if prev_gts is empty or D_feat is empty = first sample
-                D = np.ones_like(mah_dist)
-
+            D = mah_dist
 
         # IF TRAIN AND WE TRAIN FOR COMBINATION STAGE 2
         if self.training == True and self.state == 1:
-            tracking_state['mahanalobis_thresh'] = 0.1
+            # tracking_state['mahanalobis_thresh'] = 0.1
             K = self.construct_K_matrix(distance_matrix=D_module, dets=dets, curr_gts=curr_gts, trks=trks,
                                         prev_gts=prev_gts)
             
             if K.shape[0] > 0:
                 loss = self.Criterion(D_module, K)  # criterion is costum loss
-                D = K.detach().cpu().numpy()
+                D = D_module.detach().cpu().numpy()
 
             else:
                 D = np.ones_like(mah_dist)
 
-        # ELSE WE ARE IN VAL MODE AND WE USE D_MODULE AS D WITH MAH_THRESH 11
-        if not self.training:
+        # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
+        if not self.training or self.state == 2:
             D = D_module.cpu().numpy()  
-
 
         # GREEDY MATCH
         matched_indices = greedy_match(D)
 
-        # RETRIEVE MATCHED AND UNMATCHED
+        # # RETRIEVE MATCHED AND UNMATCHED
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(
             matched_indices,
             distance_matrix=D,
@@ -392,21 +412,30 @@ class TrackerNN(nn.Module):
                 unmatched_feats = det_feats[unmatched_dets]
                 P[unmatched_dets] = self.track_initialization(unmatched_feats)
 
-                new_track_mask = P[unmatched_dets].squeeze() > self.track_init_thresh
+                new_track_mask = P[unmatched_dets].squeeze() > tracking_state['track_init_thresh']
                 new_track_indices = unmatched_dets[new_track_mask]
 
-                new_tracks = [
-                    KalmanBoxTracker(dets[i], info[i], info[i, -1], tracking_name)
-                    for i in new_track_indices]
-                tracking_state['trackers'].extend(new_tracks)
-                tracking_state['features'].extend([det_feats[i].detach() for i in new_track_indices])
+                for idx in new_track_indices:
+                    new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
+                    tracking_state['trackers'].append(new_track)
+                    tracking_state['features'].append(det_feats[idx].detach())
 
+                if curr_gts.shape[0] != 0  and self.training == True:
+                    C = self.construct_C_matrix2(dets[unmatched_dets], curr_gts)
+                    loss = self.criterion(P[unmatched_dets], C)  # criterion is nn.BCELoss()
+
+        # INITIALIZE BASED ON GTS
         else:
-            for i in unmatched_dets:
-                detection_score = info[i][-1]
-                trk = KalmanBoxTracker(dets[i, :], info[i, :], detection_score, tracking_name)
-                tracking_state['trackers'].append(trk)
-                tracking_state['features'].append(det_feats[i].detach())
+            if unmatched_dets.shape[0] > 0:
+                C = torch.zeros(dets.shape[0], 1, device=self.device)
+                C[unmatched_dets] = self.construct_C_matrix2(dets[unmatched_dets], curr_gts)
+                new_track_mask = C[unmatched_dets].squeeze() > tracking_state['track_init_thresh']
+                new_track_indices = unmatched_dets[new_track_mask]
+
+                for idx in new_track_indices:
+                    new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
+                    tracking_state['trackers'].append(new_track)
+                    tracking_state['features'].append(det_feats[idx].detach())
 
         # TRACK MANAGEMENT
         ret = []
@@ -421,19 +450,8 @@ class TrackerNN(nn.Module):
                 tracking_state['trackers'].pop(i)
                 tracking_state['features'].pop(i)
 
-
-            if self.state == 2:  # IF TRACK INIT
-                if curr_gts.shape[0] != 0 and unmatched_dets.shape[0] > 0:
-                    C = self.construct_C_matrix2(dets[unmatched_dets], curr_gts)
-                    loss = self.criterion(P[unmatched_dets], C)  # criterion is nn.BCELoss()
-
-
         # RETURN CURRENT TRACKS AND LOSS
         if len(ret) > 0:
             return np.concatenate(ret), loss
         return np.empty((0, 15 + 7)), loss
 
-    # Helper methods (mahalanobis_distance, expand_and_concat, greedy_match, associate_detections_to_trackers)
-    # should be implemented here. You can copy them from the original implementation.
-
-# You'll also need to include the KalmanBoxTracker class implementation.
