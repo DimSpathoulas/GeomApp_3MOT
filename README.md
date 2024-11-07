@@ -7,8 +7,13 @@ This is the main module.
 - Add ReLu() in g1 in the end.
 - 
 
+python cov_calc_cent_orient_cor.py > cov_calc_cent_orient_cor.txt
 
-python evaluate_nuscenes.py --output_dir results dist_module.json > results/dist_module.txt
+python evaluate_nuscenes.py --output_dir results pcds_norm_per_class_64.json > results/pcds_norm_per_class_64.txt
+
+val_conv_layer_025.pkl
+
+
 
 
 python g2_v4.py

@@ -18,7 +18,7 @@ from nuscenes.eval.common.data_classes import EvalBoxes
 from nuscenes.eval.detection.data_classes import DetectionBox
 from splits import get_scenes_of_split
 
-from covariance_v3 import Covariance
+from cov_centerpoint import Covariance
 from utils import mkdir_if_missing
 import argparse
 

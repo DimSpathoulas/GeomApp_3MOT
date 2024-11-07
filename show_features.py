@@ -464,9 +464,10 @@ def feature_analysis():
             for i, item in enumerate(all_results[current_sample_token]):
                 for name in NUSCENES_TRACKING_NAMES:
                     for dets_outputs in item[name]:
-                        pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
-                        pcds_all[name].append(pcd_feature)
-                        fvs_all[name].append(dets_outputs['feature_vector'])
+                        if dets_outputs['pred_score'] > 0.57:
+                            pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
+                            pcds_all[name].append(pcd_feature)
+                            fvs_all[name].append(dets_outputs['feature_vector'])
 
             current_sample_token = nusc.get('sample', current_sample_token)['next']
 
@@ -482,53 +483,53 @@ def feature_analysis():
         print(f'Shape of pcds_all[{name}]: {pcds_all[name].shape}')
         print(f'Shape of fvs_all[{name}]: {fvs_all[name].shape}')
 
-    # object_counts = {name: pcds_all[name].shape[0] for name in NUSCENES_TRACKING_NAMES}
+    object_counts = {name: pcds_all[name].shape[0] for name in NUSCENES_TRACKING_NAMES}
 
-    # for name in NUSCENES_TRACKING_NAMES:
-    #     print(f'Shape of pcds_all[{name}]: {pcds_all[name].shape}')
+    for name in NUSCENES_TRACKING_NAMES:
+        print(f'Shape of pcds_all[{name}]: {pcds_all[name].shape}')
 
-    #     plt.figure(figsize=(12, 6))
-    #     plt.bar(object_counts.keys(), object_counts.values())
-    #     plt.xlabel('Tracking Names')
-    #     plt.ylabel('Number of Objects')
-    #     plt.title('Number of Objects for Each Tracking Name in pcds_all')
-    #     plt.xticks(rotation=45)
-    #     plt.tight_layout()
-    #     plt.savefig('features/class_imbalance/object_counts_histogram.png')
-    #     plt.close()
+        plt.figure(figsize=(12, 6))
+        plt.bar(object_counts.keys(), object_counts.values())
+        plt.xlabel('Tracking Names')
+        plt.ylabel('Number of Objects')
+        plt.title('Number of Objects for Each Tracking Name in pcds_all')
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        plt.savefig('features/class_imbalance/object_counts_histogram.png')
+        plt.close()
 
-    # visualize_feature_distributions(pcds_all, fvs_all)
-    # print('done with 1')
+    visualize_feature_distributions(pcds_all, fvs_all)
+    print('done with 1')
 
-    # visualize_feature_statistics(pcds_all, fvs_all)
-    # print('done with 2')
+    visualize_feature_statistics(pcds_all, fvs_all)
+    print('done with 2')
 
-    # visualize_feature_correlation(pcds_all, fvs_all)
-    # print('done with 3')
+    visualize_feature_correlation(pcds_all, fvs_all)
+    print('done with 3')
 
-    # visualize_pca(pcds_all, fvs_all)
-    # print('done with 4')
+    visualize_pca(pcds_all, fvs_all)
+    print('done with 4')
 
     # visualize_density_estimation(pcds_all, fvs_all)
     # print('done with 5')
 
-    # visualize_pca_3d(pcds_all, fvs_all)
-    # print('done with 6')
+    visualize_pca_3d(pcds_all, fvs_all)
+    print('done with 6')
 
-    # visualize_umap(pcds_all, fvs_all)
-    # print('done with all')
+    visualize_umap(pcds_all, fvs_all)
+    print('done with all')
 
-    # visualize_umap_3d(pcds_all, fvs_all)
-    # print('done with UMAP 3D')
+    visualize_umap_3d(pcds_all, fvs_all)
+    print('done with UMAP 3D')
 
     # visualize_isomap_3d(pcds_all, fvs_all)
     # print('done with Isomap 3D')
 
-    # visualize_tsne_3d(pcds_all, fvs_all)
-    # print('done with t-SNE 3D')
+    visualize_tsne_3d(pcds_all, fvs_all)
+    print('done with t-SNE 3D')
 
-    # visualize_lda_3d(pcds_all, fvs_all)
-    # print('done with LDA 3D')
+    visualize_lda_3d(pcds_all, fvs_all)
+    print('done with LDA 3D')
 
     # visualize_features_multiprocessing(pcds_all, fvs_all)
 

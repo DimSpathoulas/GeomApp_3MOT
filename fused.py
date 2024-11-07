@@ -7,15 +7,91 @@ import torch
 from torch import nn
 from collections import defaultdict
 from functions.Kalman_Filter import KalmanBoxTracker
-from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers_K, associate_detections_to_trackers
+from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers
 from itertools import product
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+class ChannelSelector(nn.Module):
+    def __init__(self, in_channels=512, reduction=4):
+        super().__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)  # Global average pooling
+        self.max_pool = nn.AdaptiveMaxPool2d(1)  # Global max pooling
+        
+        # Channel attention
+        self.fc = nn.Sequential(
+            nn.Linear(in_channels, in_channels // reduction),
+            nn.ReLU(),
+            nn.Linear(in_channels // reduction, in_channels),
+            nn.Sigmoid()
+        )
+
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        # Both max and avg pooling for better feature selection
+        avg_out = self.fc(self.avg_pool(x).view(b, c))
+        max_out = self.fc(self.max_pool(x).view(b, c))
+        
+        channel_weights = (avg_out + max_out).view(b, c, 1, 1)
+        return x * channel_weights
 
 
 class LayerNorm1d(nn.Module):
     def forward(self, x):
         return nn.functional.layer_norm(x, x.shape[1:])
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, d_model, num_heads):
+        super(MultiHeadAttention, self).__init__()
+        self.num_heads = num_heads
+        self.d_model = d_model
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+        
+        self.d_k = d_model // num_heads
+        self.W_q = nn.Linear(d_model, d_model)
+        self.W_k = nn.Linear(d_model, d_model)
+        self.W_v = nn.Linear(d_model, d_model)
+        self.W_o = nn.Linear(d_model, d_model)
+        
+    def scaled_dot_product_attention(self, Q, K, V, mask=None):
+        attn_scores = torch.matmul(Q, K.transpose(-2, -1)) / torch.sqrt(torch.tensor(self.d_k, dtype=torch.float32))
+        if mask is not None:
+            attn_scores = attn_scores.masked_fill(mask == 0, -1e9)
+        attn_probs = torch.softmax(attn_scores, dim=-1)
+        output = torch.matmul(attn_probs, V)
+        return output
+        
+    def forward(self, Q, K, V, mask=None):
+        batch_size = Q.size(0)
+        
+        Q = self.W_q(Q).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        K = self.W_k(K).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        V = self.W_v(V).view(batch_size, -1, self.num_heads, self.d_k).transpose(1, 2)
+        
+        output = self.scaled_dot_product_attention(Q, K, V, mask)
+        output = output.transpose(1, 2).contiguous().view(batch_size, -1, self.d_model)
+        return self.W_o(output)
+
+
+class TransformerBlock(nn.Module):
+    def __init__(self, d_model, num_heads, d_ff, dropout=0.1):
+        super(TransformerBlock, self).__init__()
+        self.attn = MultiHeadAttention(d_model, num_heads)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.ff = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.ReLU(),
+            nn.Linear(d_ff, d_model)
+        )
+        self.dropout = nn.Dropout(dropout)
+        
+    def forward(self, x):
+        attn_output = self.attn(x, x, x)
+        x = self.norm1(x + self.dropout(attn_output))
+        ff_output = self.ff(x)
+        x = self.norm2(x + self.dropout(ff_output))
+        return x
 
 
 class TrackerNN(nn.Module):
@@ -27,35 +103,35 @@ class TrackerNN(nn.Module):
             nn.Linear(1024 + 6, 1536),
             # LayerNorm1d(),
             nn.ReLU(),
-            # nn.Dropout(0.2),
+            nn.Dropout(0.2),
             nn.Linear(1536, 4608)
         )
         
         self.G2 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
             # nn.InstanceNorm2d(256),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
             # LayerNorm1d(),
             nn.ReLU(),
-            # nn.Dropout(0.1),
+            nn.Dropout(0.1),
             nn.Linear(128, 1),
             nn.Sigmoid()
         )
 
         self.G3 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
             nn.ReLU(),
-            # nn.Dropout(0.2),
+            nn.Dropout(0.1),
             nn.Linear(128, 2)
         )
 
         self.G4 = nn.Sequential(
-            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
@@ -63,13 +139,102 @@ class TrackerNN(nn.Module):
             nn.Linear(128, 1),
             nn.Sigmoid()
         )
+
+        self.inter = nn.Sequential(
+            nn.Conv2d(
+                in_channels=512,
+                out_channels=512,
+                kernel_size=3,
+                padding=1,
+                stride=1
+            )
+
+            # nn.Conv2d(
+            #     in_channels=512,
+            #     out_channels=1024,
+            #     kernel_size=3,
+            #     padding=1,
+            #     stride=1
+            # ),
+            # nn.ReLU(),
+
+            # nn.Conv2d(
+            #     in_channels=1024,
+            #     out_channels=512,
+            #     kernel_size=3,
+            #     padding=1,
+            #     stride=1
+            # )
+        )
+
+
+        self.deepG2 = nn.Sequential(
+            # First block
+            nn.Conv2d(1024, 512, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1),
+            nn.ReLU(),
+
+            # Second block
+            nn.Conv2d(512, 256, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.ReLU(),
+
+            # Third block
+            nn.Conv2d(256, 128, 3, padding=0),
+            nn.ReLU(),
+
+            # Final processing
+            nn.Flatten(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 1),
+            nn.Sigmoid()
+        )
+
+        self.deepG3 = nn.Sequential(
+            # First block
+            nn.Conv2d(1024, 512, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(512, 512, 3, padding=1),
+            nn.ReLU(),
+
+            # Second block
+            nn.Conv2d(512, 256, 3, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(256, 256, 3, padding=1),
+            nn.ReLU(),
+
+            # Third block
+            nn.Conv2d(256, 128, 3, padding=0),
+            nn.ReLU(),
+
+            # Final processing
+            nn.Flatten(),
+            nn.Linear(128, out_features=64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 2)
+        )
+
+
+
+        self.channel_selector = ChannelSelector(512)
+
+        # Transformer blocks
+        # from attention is all you need
+        self.ff_transformer = TransformerBlock(d_model=512, num_heads=8, d_ff=2048)
+        self.dc1_transformer = TransformerBlock(d_model=256, num_heads=4, d_ff=1024)
+        self.dc2_transformer = TransformerBlock(d_model=256, num_heads=4, d_ff=1024)
+        self.ti_transformer = TransformerBlock(d_model=256, num_heads=4, d_ff=1024)
 
         # WEIGHT INIT
         # self.apply(self.initialize_weights)
         
         # INIT STATES - WILL BE CLEARED AFTER EACH SCENE
         self.tracking_states = {}
-
 
     @staticmethod
     def initialize_weights(m):
@@ -91,6 +256,96 @@ class TrackerNN(nn.Module):
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
 
+    # SUB-FORWARDS
+    def feature_fusion(self, F2D, F3D, cam_onehot_vector):
+        # cam_feats = torch.cat((F2D, cam_onehot_vector), dim=1)
+        # cam_feats = self.G1(cam_feats)
+
+        # cam_feats = cam_feats.reshape(cam_feats.shape[0], 512, 3, 3)
+
+        # # L2 normalize across spatial dimensions
+        # cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
+        # cam_feats = cam_feats.view(cam_feats.shape[0], 512, 3, 3)
+        # print(F3D.shape)
+        F3D = torch.nn.functional.normalize(F3D.view(F3D.shape[0], -1), p=2, dim=1)
+        F3D = F3D.view(F3D.shape[0], 512, 3, 3)
+        
+        # # Fuse the normalized features
+        # fused = F3D + cam_feats
+        
+        # # normalize the fused output again
+        # fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
+        # fused = fused.view(fused.shape[0], 512, 3, 3)
+
+        # fused = self.inter(fused)
+        
+        # fused = fused.reshape(fused.shape[0], 512, -1).transpose(1, 2)
+        # fused = self.ff_transformer(fused)
+        # fused = fused.transpose(1, 2).reshape(fused.shape)
+
+        # fused_r = torch.randn(F2D.shape[0], 512, 3, 3).to(device)
+        
+        return F3D
+
+
+    def distance_combination_stage_1(self, x):
+        if x.shape[1] == 0:
+            return torch.empty(0, 0).to(device=device)
+        
+        ds, ts, channels, height, width = x.shape
+        x_reshaped = x.reshape(-1, channels, height, width)
+
+        x_trans = self.deepG2(x_reshaped)
+        # G2 first layer (conv)
+        # x_conv = self.G2[0](x_reshaped)
+        # x_trans = x_conv
+
+        # transformer
+        # x_trans = x_conv.reshape(x_conv.shape[0], 256, -1).transpose(1, 2)
+        # x_trans = self.dc1_transformer(x_trans)
+        # x_trans = x_trans.transpose(1, 2).reshape(x_conv.shape)
+        
+        # remaining G2 layers
+        # x_trans = self.G2[1:](x_trans)
+        return x_trans.reshape(ds, ts)
+
+    def distance_combination_stage_2(self, x):
+        if x.shape[1] == 0:
+            return torch.empty(0, 0).to(device=device), torch.empty(0, 0).to(device=device)
+        
+        ds, ts, channels, height, width = x.shape
+        x_reshaped = x.reshape(-1, channels, height, width)
+
+        result = self.deepG3(x_reshaped)
+        # First conv layer from G3
+        # x_conv = self.G3[0](x_reshaped)
+        # x_trans = x_conv
+        
+        # transformer
+        # x_trans = x_conv.reshape(x_conv.shape[0], 256, -1).transpose(1, 2)
+        # x_trans = self.dc2_transformer(x_trans)
+        # x_trans = x_trans.transpose(1, 2).reshape(x_conv.shape)
+        
+        # remaining G3 layers
+        # result = self.G3[1:](x_trans)
+        result_reshaped = result.reshape(ds, ts, -1)
+        a = result_reshaped[:, :, 0]
+        b = result_reshaped[:, :, 1]
+
+        return a, b
+
+    def track_initialization(self, x):
+
+        x_conv = self.G4[0](x)
+        
+        # transformer
+        x_trans = x_conv.reshape(x_conv.shape[0], 256, -1).transpose(1, 2)
+        x_trans = self.ti_transformer(x_trans)
+        x_trans = x_trans.transpose(1, 2).reshape(x_conv.shape)
+        
+        # Apply remaining G4 layers
+        return self.G4[1:](x_trans)
+
 
     def clear_tracking_states(self):
         """Clear all tracking states."""
@@ -98,7 +353,7 @@ class TrackerNN(nn.Module):
 
 
     # Initialize AB3DMOT attributes - CALL FOR EACH NEW SCENE
-    def reinit_ab3dmot(self, tracking_name, max_age=2, min_hits=3, training=False, state=0, criterion=None):
+    def reinit_ab3dmot(self, tracking_name, max_age=2, min_hits=3, training=False, state=0, criterion=None, epoch=0):
         self.tracking_states[tracking_name] = {
             'max_age': max_age,
             'min_hits': min_hits,
@@ -113,6 +368,7 @@ class TrackerNN(nn.Module):
         self.training = training
         self.state = state
         self.criterion = criterion
+        self.epoch = epoch
 
 
     # EXPAND AND CONCAT FOR G2 G3
@@ -148,7 +404,7 @@ class TrackerNN(nn.Module):
 
 
     # K GT IND MATRIX COMPUTER FOR DSC1 AND DSC2
-    def construct_K_matrix(self, distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2):
+    def construct_K_matrix(self, distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2, epoch=0):
         
         if prev_gts.shape[0] == 0 or curr_gts.shape[0] == 0 or distance_matrix.shape[0] == 0:
             return torch.empty(0,0).to(device=device)
@@ -172,11 +428,16 @@ class TrackerNN(nn.Module):
         curr_gts_ids = np.array([gt[7] for gt in curr_gts])
         prev_gts_ids = np.array([gt[7] for gt in prev_gts])
 
+        # Relaxed distance threshold based on epoch
+        # threshold = (threshold * (2.0 - min(epoch/5.0, 1.0)))
+
         for i, (d, gt_d) in enumerate(zip(d_idx, d_gt_idx)):
             for j, (t, gt_t) in enumerate(zip(t_idx, t_gt_idx)):
-                if (curr_gts_ids[gt_d] == prev_gts_ids[gt_t] and
+                if (curr_gts_ids[gt_d] == prev_gts_ids[gt_t] 
+                    and
                         dist_1[i] <= threshold and
-                        dist_2[j] <= threshold):
+                        dist_2[j] <= threshold
+                    ):
                     K[d, t] = 0
 
         return K
@@ -222,7 +483,7 @@ class TrackerNN(nn.Module):
 
 
     # CREATE C MATRIX (GTS) FOR TRACK INIT
-    def construct_C_matrix(self, estims, trues):
+    def construct_C_matrix_old(self, estims, trues):
         estims_xy = estims[:, :2]
         trues_xy = np.array(trues[:, :2], dtype=float)
 
@@ -236,51 +497,60 @@ class TrackerNN(nn.Module):
 
         return C
     
-    def construct_C_matrix2(self, estimates, truths):
-        estimates_xy = estimates[:, :2]
-        truths_xy = torch.as_tensor(truths[:, :2], dtype=torch.float32)
-
+    def construct_C_matrix(self, estimates, truths, distance_threshold=2.0):
+        """
+        Compute proximity scores between detections and ground truths.
+        Returns 1 if detection is close to any ground truth, 0 otherwise.
+        
+        Args:
+            estimates: detection coordinates [N, dim]
+            truths: ground truth coordinates [M, dim]
+            distance_threshold: maximum distance to consider a detection close to ground truth
+            
+        Returns:
+            torch.Tensor: Binary proximity scores [N, 1]
+        """
+        # Extract and convert xy coordinates
+        estimates_xy = torch.from_numpy(estimates[:, :2].astype(np.float32))
+        truths_xy = torch.from_numpy(truths[:, :2].astype(np.float32))
+        
+        # Compute pairwise distances between all detections and ground truths
         distances = torch.norm(estimates_xy[:, None] - truths_xy, dim=2)
+        
+        # Find minimum distance to any ground truth for each detection
         min_distances = torch.min(distances, dim=1).values
         
-        C = (min_distances <= 2.0).float().unsqueeze(1)
+        # Convert to binary scores based on threshold
+        C = (min_distances <= distance_threshold).float().unsqueeze(1)
         
         return C
 
 
-
-    # SUB-FORWARDS
-    def feature_fusion(self, F2D, F3D, cam_onehot_vector):
-        fused = torch.cat((F2D, cam_onehot_vector), dim=1)
-        fused = self.G1(fused)
-        fused = fused.reshape(fused.shape[0], 512, 3, 3)
-        fused = F3D + fused
-        return fused
-
-    def distance_combination_stage_1(self, x):
-        if x.shape[1] == 0:
-            return torch.empty(0, 0).to(device=device)
+    def compute_pairwise_cosine_similarity(self, det_feats, trk_feats):
+        # Flatten the spatial dimensions
+        m, c, h, w = det_feats.shape
+        n = trk_feats.shape[0]
         
-        ds, ts, channels, height, width = x.shape
-        x_reshaped = x.view(-1, channels, height, width)
-        result = self.G2(x_reshaped)
-        return result.view(ds, ts)
-
-    def distance_combination_stage_2(self, x):
-        if x.shape[1] == 0:
-            return torch.empty(0, 0).to(device=device), torch.empty(0, 0).to(device=device)
+        # Reshape to (m, 512*3*3)
+        det_feats = det_feats.view(m, -1)
+        trk_feats = trk_feats.view(n, -1)
         
-        ds, ts, channels, height, width = x.shape
-        x_reshaped = x.view(-1, channels, height, width)
-        result = self.G3(x_reshaped)
-        result_reshaped = result.view(ds, ts, -1)
-        a = result_reshaped[:, :, 0]
-        b = result_reshaped[:, :, 1]
-        return a, b
-
-    def track_initialization(self, x):
-        return self.G4(x)
-
+        # Choose ONE normalization method:
+        
+        # Option 1: Only L2 normalization (for cosine similarity)
+        det_feats = torch.nn.functional.normalize(det_feats, p=2, dim=1)
+        trk_feats = torch.nn.functional.normalize(trk_feats, p=2, dim=1)
+        
+        # OR
+        
+        # Option 2: Only mean-std normalization
+        # det_feats = (det_feats - det_feats.mean(dim=1, keepdim=True)) / (det_feats.std(dim=1, keepdim=True) + 1e-8)
+        # trk_feats = (trk_feats - trk_feats.mean(dim=1, keepdim=True)) / (trk_feats.std(dim=1, keepdim=True) + 1e-8)
+        
+        # Compute similarity matrix
+        similarity_matrix = torch.mm(det_feats, trk_feats.t())
+        
+        return similarity_matrix
 
     def forward(self, dets_all, tracking_name):  # FOR EACH SAMPLE IN EACH SCENE FORWARD BASED ON self.state
 
@@ -343,27 +613,50 @@ class TrackerNN(nn.Module):
             point_five = torch.tensor(0.5).to(device)
             a, b = self.distance_combination_stage_2(feature_map)
 
-            K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
-                                    prev_gts=prev_gts)
+            if self.training == True:
+                warmup_factor = min(self.epoch  / 5.0, 1.0)
+                a = a * warmup_factor
+
+            # K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
+            #                 prev_gts=prev_gts, epoch=self.epoch)  
+            
+            # if K.shape[0] > 0:
+
+            #     D_feat = K
+            #     # sim_matrix = self.compute_pairwise_cosine_similarity(det_feats, trks_feats)
+            #     # print(K, '\n', sim_matrix)
+            # else:
+            #     D_feat = torch.ones_like(D_feat)
+
+            # print(f"D_mah range: [{D_mah.min():.3f}, {D_mah.max():.3f}], mean: {D_mah.mean():.3f}")
+            # print(f"D_feat range: [{D_feat.min():.3f}, {D_feat.max():.3f}], mean: {D_feat.mean():.3f}")
+            
+            # # Check α,β values
+            # print(f"Alpha range: [{a.min():.3f}, {a.max():.3f}], mean: {a.mean():.3f}")
+            # print(f"Beta range: [{b.min():.3f}, {b.max():.3f}], mean: {b.mean():.3f}")
 
             D_module = D_mah + (a * (D_feat - (point_five + b)))
 
-            print(D_feat, '\n', a, b, '\n', D_module, '\n', D_mah, '\n', K, '\n\n')
+            # print(f"D_module range: [{D_module.min():.3f}, {D_module.max():.3f}]")
+
+            # print(D_feat, '\n', a, b, '\n', D_module, '\n', D_mah, '\n', K, '\n\n')
 
         # IF WE TRAIN FOR D_FEAT
         # THERE IS NO VAL MODE IN STAGE 1 OF DC
         if self.training == True and self.state == 0:
             # tracking_state['mahanalobis_thresh'] = 0.1
             K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
-                                            prev_gts=prev_gts)  
+                                            prev_gts=prev_gts, epoch=self.epoch)  
                             # K = torch.randint(0, 2, D_mah.shape, dtype=torch.float, device=device)
-
-            # print(D_feat, K)
             
             if K.shape[0] > 0:
+                # sim_matrix = self.compute_pairwise_cosine_similarity(det_feats, trks_feats)
+                # print(K, '\n', sim_matrix)
                 n_non_matches = max((K == 1).sum(), 1) 
                 n_matches = max((K == 0).sum(), 1)
-                pos_weight = (n_matches / n_non_matches) * (K.shape[0]+K.shape[1])
+                matrix_density = (K.shape[0] * K.shape[1]) / (K.shape[0] + K.shape[1])
+                pos_weight =  matrix_density # * (n_matches / n_non_matches)
+                # pos_weight = torch.clamp(pos_weight, min=0.1, max=10.0)
                 criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
                 loss = criterion(D_feat, K)
 
@@ -373,14 +666,13 @@ class TrackerNN(nn.Module):
         if self.training == True and self.state == 1:
             # tracking_state['mahanalobis_thresh'] = 0.1
             K = self.construct_K_matrix(distance_matrix=D_module, dets=dets, curr_gts=curr_gts, trks=trks,
-                                        prev_gts=prev_gts)
+                                        prev_gts=prev_gts, epoch=self.epoch)
             
             if K.shape[0] > 0:
                 loss = self.Criterion(D_module, K)  # criterion is costum loss
-                D = D_module.detach().cpu().numpy()
+                # print(D_feat, K)
 
-            else:
-                D = np.ones_like(mah_dist)
+            D = D_module.detach().cpu().numpy()  
 
         # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
         if not self.training or self.state == 2:
@@ -408,34 +700,31 @@ class TrackerNN(nn.Module):
         if self.state == 2:  # IF AND ONLY IF STATE IS 2 (NOT 0 OR 1)
 
             if unmatched_dets.shape[0] > 0:
-                P = torch.zeros(dets.shape[0], 1, device=self.device)
+                P = torch.zeros(dets.shape[0], 1, device=D_feat.device)
                 unmatched_feats = det_feats[unmatched_dets]
                 P[unmatched_dets] = self.track_initialization(unmatched_feats)
 
-                new_track_mask = P[unmatched_dets].squeeze() > tracking_state['track_init_thresh']
-                new_track_indices = unmatched_dets[new_track_mask]
-
-                for idx in new_track_indices:
-                    new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
-                    tracking_state['trackers'].append(new_track)
-                    tracking_state['features'].append(det_feats[idx].detach())
+                for idx in unmatched_dets:
+                    if P[idx] > tracking_state['track_init_thresh']:
+                        new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
+                        tracking_state['trackers'].append(new_track)
+                        tracking_state['features'].append(det_feats[idx].detach())
 
                 if curr_gts.shape[0] != 0  and self.training == True:
-                    C = self.construct_C_matrix2(dets[unmatched_dets], curr_gts)
+                    C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
                     loss = self.criterion(P[unmatched_dets], C)  # criterion is nn.BCELoss()
 
         # INITIALIZE BASED ON GTS
         else:
-            if unmatched_dets.shape[0] > 0:
-                C = torch.zeros(dets.shape[0], 1, device=self.device)
-                C[unmatched_dets] = self.construct_C_matrix2(dets[unmatched_dets], curr_gts)
-                new_track_mask = C[unmatched_dets].squeeze() > tracking_state['track_init_thresh']
-                new_track_indices = unmatched_dets[new_track_mask]
+          if unmatched_dets.shape[0] > 0 and curr_gts.shape[0] > 0:
+                C = torch.zeros(dets.shape[0], 1)
+                C[unmatched_dets] = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
 
-                for idx in new_track_indices:
-                    new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
-                    tracking_state['trackers'].append(new_track)
-                    tracking_state['features'].append(det_feats[idx].detach())
+                for idx in unmatched_dets:
+                    if C[idx] > tracking_state['track_init_thresh']:
+                        new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
+                        tracking_state['trackers'].append(new_track)
+                        tracking_state['features'].append(det_feats[idx].detach())
 
         # TRACK MANAGEMENT
         ret = []

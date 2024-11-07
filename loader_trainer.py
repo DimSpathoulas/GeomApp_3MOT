@@ -87,16 +87,16 @@ def track_nuscenes():
                         help='Set this to one if you want Train-Val in one go.\
                         This way output will be both the model and tracks (will overwrite arg training)')
     
-    parser.add_argument('--state', type=str, default=0,
+    parser.add_argument('--state', type=str, default=1,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='model_g2_perclass.pth',
+    parser.add_argument('--load_model_state', type=str, default='g2_pcds_norm_per_class_deep.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='model_g2_perclass.pth',
+    parser.add_argument('--save_model_state', type=str, default='g2_pcds_norm_per_class_deep.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='dist_module.json',
+    parser.add_argument('--output_path', type=str, default='pcds_norm_per_class_deep.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -215,7 +215,7 @@ def track_nuscenes():
             current_sample_token = first_sample_token
 
             for tracking_name in NUSCENES_TRACKING_NAMES:
-                Tracker.reinit_ab3dmot(tracking_name=tracking_name, training=training, state=state, criterion=criterion)
+                Tracker.reinit_ab3dmot(tracking_name=tracking_name, training=training, state=state, criterion=criterion, epoch=epoch)
 
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
@@ -273,8 +273,7 @@ def track_nuscenes():
                 if epoch < EPOCHS - 1:
                     for tracking_name in NUSCENES_TRACKING_NAMES:
                         if dets_all[tracking_name]['dets'].shape[0] > 0\
-                        and dets_all[tracking_name]['current_gts'].shape[0] > 0\
-                        and dets_all[tracking_name]['previous_gts'].shape[0] > 0:
+                        and dets_all[tracking_name]['current_gts'].shape[0] > 0:
                             
                             optimizer.zero_grad()
                             trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
@@ -298,8 +297,8 @@ def track_nuscenes():
 
                     for tracking_name in NUSCENES_TRACKING_NAMES:
                         if dets_all[tracking_name]['dets'].shape[0] > 0:
-
-                            trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
+                            with torch.no_grad():
+                                trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
 
                             # (N, 9)
                             # (h, w, l, x, y, z, rot_y), tracking_id, tracking_score
@@ -321,8 +320,8 @@ def track_nuscenes():
                 # prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
 
-            # if epoch < EPOCHS - 1:
-            #     print(scene_loss)
+            # if epoch < EPOCHS - 1 and scene_loss is not None:
+            #     scene_loss.div(40.0)
             #     scene_loss.backward()
             #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
             #     optimizer.step()
