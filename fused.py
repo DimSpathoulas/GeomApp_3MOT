@@ -101,19 +101,18 @@ class TrackerNN(nn.Module):
         # Neural network components - INITIALIZED ONCE
         self.G1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
-            # LayerNorm1d(),
             nn.ReLU(),
-            nn.Dropout(0.2),
-            nn.Linear(1536, 4608)
+            nn.Dropout(0.1),
+            nn.Linear(1536, 4608),
+            # nn.Dropout(0.1),
+            # nn.Linear(512, 4608)
         )
         
         self.G2 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
-            # nn.InstanceNorm2d(256),
+            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
-            # LayerNorm1d(),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(128, 1),
@@ -121,7 +120,7 @@ class TrackerNN(nn.Module):
         )
 
         self.G3 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
@@ -131,7 +130,7 @@ class TrackerNN(nn.Module):
         )
 
         self.G4 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Linear(256, 128),
@@ -145,8 +144,7 @@ class TrackerNN(nn.Module):
                 in_channels=512,
                 out_channels=512,
                 kernel_size=3,
-                padding=1,
-                stride=1
+                padding=1
             )
 
             # nn.Conv2d(
@@ -167,59 +165,94 @@ class TrackerNN(nn.Module):
             # )
         )
 
+        self.G3cam = nn.Sequential(
+            nn.Linear(1030, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(256, out_features=64),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, out_features=2)
+
+        )
 
         self.deepG2 = nn.Sequential(
             # First block
-            nn.Conv2d(1024, 512, 3, padding=1),
+            nn.Conv2d(128, 128, 3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1),
+            nn.Conv2d(128, 64, 3, padding=0),
             nn.ReLU(),
 
             # Second block
-            nn.Conv2d(512, 256, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(256, 256, 3, padding=1),
-            nn.ReLU(),
+            # nn.Conv2d(256, out_channels=128, 3, padding=1),
+            # nn.ReLU(),
+            # nn.Conv2d(256, 256, 3, padding=1),
+            # nn.ReLU(),
 
             # Third block
-            nn.Conv2d(256, 128, 3, padding=0),
-            nn.ReLU(),
+            # nn.Conv2d(64, 128, 3, padding=0),
+            # nn.ReLU(),
 
             # Final processing
             nn.Flatten(),
-            nn.Linear(128, 64),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(64, 1),
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
 
         self.deepG3 = nn.Sequential(
             # First block
-            nn.Conv2d(1024, 512, 3, padding=1),
+            nn.Conv2d(128, 128, 3, padding=1),
             nn.ReLU(),
-            nn.Conv2d(512, 512, 3, padding=1),
+            nn.Conv2d(128, 64, 3, padding=0),
             nn.ReLU(),
 
             # Second block
-            nn.Conv2d(512, 256, 3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(256, 256, 3, padding=1),
-            nn.ReLU(),
+            # nn.Conv2d(256, out_channels=128, 3, padding=1),
+            # nn.ReLU(),
+            # nn.Conv2d(256, 256, 3, padding=1),
+            # nn.ReLU(),
 
             # Third block
-            nn.Conv2d(256, 128, 3, padding=0),
-            nn.ReLU(),
+            # nn.Conv2d(64, 128, 3, padding=0),
+            # nn.ReLU(),
 
             # Final processing
             nn.Flatten(),
-            nn.Linear(128, out_features=64),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(64, 2)
+            nn.Linear(32, 2)  # add sigmoid to b ?
         )
 
+        self.deepG3w = nn.Sequential(
+            # First block
+            nn.Conv2d(1024, 256, 3, padding=0),
+            nn.ReLU(),
+            # nn.Conv2d(512, 512, 3, padding=1),
+            # nn.ReLU(),
 
+            # # Second block
+            # nn.Conv2d(512, 256, 3, padding=1),
+            # nn.ReLU(),
+            # # nn.Conv2d(256, 256, 3, padding=1),
+            # # nn.ReLU(),
+
+            # # Third block
+            # nn.Conv2d(256, 128, 3, padding=0),
+            # nn.ReLU(),
+
+            # Final processing
+            nn.Flatten(),
+            nn.Linear(256, out_features=128),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(128, 2)
+        )
+
+        self.bactiv = nn.Tanh()
 
         self.channel_selector = ChannelSelector(512)
 
@@ -258,22 +291,25 @@ class TrackerNN(nn.Module):
 
     # SUB-FORWARDS
     def feature_fusion(self, F2D, F3D, cam_onehot_vector):
-        # cam_feats = torch.cat((F2D, cam_onehot_vector), dim=1)
-        # cam_feats = self.G1(cam_feats)
+        cam_feats = torch.cat((F2D, cam_onehot_vector), dim=1)
+        cam_feats = self.G1(cam_feats)
 
-        # cam_feats = cam_feats.reshape(cam_feats.shape[0], 512, 3, 3)
+        cam_feats = cam_feats.reshape(cam_feats.shape[0], 512, 3, 3)
 
         # # L2 normalize across spatial dimensions
+        lidar_feats = torch.nn.functional.normalize(F3D.view(cam_feats.shape[0], -1), p=2, dim=1)
+        lidar_feats = lidar_feats.view(lidar_feats.shape[0], 512, 3, 3)
+
         # cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
-        # cam_feats = cam_feats.view(cam_feats.shape[0], 512, 3, 3)
+        # cam_feats = cam_feats.view(cam_feats.shape[0], 64, 3, 3)
         # print(F3D.shape)
-        F3D = torch.nn.functional.normalize(F3D.view(F3D.shape[0], -1), p=2, dim=1)
-        F3D = F3D.view(F3D.shape[0], 512, 3, 3)
+        # lidar_feats = torch.nn.functional.normalize(F3D.view(F3D.shape[0], -1), p=2, dim=1)
+        # lidar_feats = lidar_feats.view(lidar_feats.shape[0], 64, 3, 3)
         
-        # # Fuse the normalized features
-        # fused = F3D + cam_feats
+        # Fuse the normalized features
+        fused = cam_feats + lidar_feats
         
-        # # normalize the fused output again
+        # normalize the fused output again
         # fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
         # fused = fused.view(fused.shape[0], 512, 3, 3)
 
@@ -284,8 +320,9 @@ class TrackerNN(nn.Module):
         # fused = fused.transpose(1, 2).reshape(fused.shape)
 
         # fused_r = torch.randn(F2D.shape[0], 512, 3, 3).to(device)
-        
-        return F3D
+        # fused = self.inter(fused)
+
+        return lidar_feats, cam_feats
 
 
     def distance_combination_stage_1(self, x):
@@ -295,7 +332,7 @@ class TrackerNN(nn.Module):
         ds, ts, channels, height, width = x.shape
         x_reshaped = x.reshape(-1, channels, height, width)
 
-        x_trans = self.deepG2(x_reshaped)
+        x_trans = self.G2(x_reshaped)
         # G2 first layer (conv)
         # x_conv = self.G2[0](x_reshaped)
         # x_trans = x_conv
@@ -316,7 +353,7 @@ class TrackerNN(nn.Module):
         ds, ts, channels, height, width = x.shape
         x_reshaped = x.reshape(-1, channels, height, width)
 
-        result = self.deepG3(x_reshaped)
+        result = self.G3(x_reshaped)
         # First conv layer from G3
         # x_conv = self.G3[0](x_reshaped)
         # x_trans = x_conv
@@ -330,7 +367,7 @@ class TrackerNN(nn.Module):
         # result = self.G3[1:](x_trans)
         result_reshaped = result.reshape(ds, ts, -1)
         a = result_reshaped[:, :, 0]
-        b = result_reshaped[:, :, 1]
+        b = self.bactiv(result_reshaped[:, :, 1])  # add sigmoid to b ?
 
         return a, b
 
@@ -363,7 +400,8 @@ class TrackerNN(nn.Module):
             'track_init_thresh': 0.5,
             'features': [],
             'order': [0, 1, 2, 6, 3, 4, 5],  # x, y, z, rot_z, l, w, h
-            'order_back': [0, 1, 2, 4, 5, 6, 3]
+            'order_back': [0, 1, 2, 4, 5, 6, 3],
+            'F2DS': []
         }
         self.training = training
         self.state = state
@@ -407,7 +445,7 @@ class TrackerNN(nn.Module):
     def construct_K_matrix(self, distance_matrix, dets, curr_gts, trks, prev_gts, threshold=2, epoch=0):
         
         if prev_gts.shape[0] == 0 or curr_gts.shape[0] == 0 or distance_matrix.shape[0] == 0:
-            return torch.empty(0,0).to(device=device)
+            return torch.empty(0,0).to(device=device), torch.empty(0,0).to(device=device)
         
         K = torch.ones_like(distance_matrix)
 
@@ -415,7 +453,7 @@ class TrackerNN(nn.Module):
         t_idx, t_gt_idx = self.hungarian_matching(trks, prev_gts)
 
         if len(d_idx) == 0 or len(t_idx) == 0:
-            return torch.empty(0,0).to(device=device)
+            return torch.empty(0,0).to(device=device), torch.empty(0,0).to(device=device)
         
         dets_array = np.array([det[:2] for det in dets])
         curr_gts_array = np.array([gt[:2] for gt in curr_gts], dtype=float)
@@ -430,6 +468,7 @@ class TrackerNN(nn.Module):
 
         # Relaxed distance threshold based on epoch
         # threshold = (threshold * (2.0 - min(epoch/5.0, 1.0)))
+        mask = torch.zeros_like(distance_matrix, dtype=torch.bool)
 
         for i, (d, gt_d) in enumerate(zip(d_idx, d_gt_idx)):
             for j, (t, gt_t) in enumerate(zip(t_idx, t_gt_idx)):
@@ -440,27 +479,60 @@ class TrackerNN(nn.Module):
                     ):
                     K[d, t] = 0
 
-        return K
+                if dist_1[i] <= threshold and dist_2[j] <= threshold:
+                    mask[d, t] = True
+
+
+        return K, mask
 
 
     # PART OF DCS2 COSTUM LOSS FUNCTION
-    def retrieve_pairs_remake(self, K):
-        pos_indices = torch.nonzero(K == 0, as_tuple=False)
-        neg_indices = torch.nonzero(K != 0, as_tuple=False)
-
+    def retrieve_pairs_remake(self, K, mask):
+        # Only consider positions where mask is True
+        pos_indices = torch.nonzero((K == 0) & mask, as_tuple=False)
+        neg_indices = torch.nonzero((K != 0) & mask, as_tuple=False)
+        
         pos = [tuple(idx) for idx in pos_indices.tolist()]
         neg = [tuple(idx) for idx in neg_indices.tolist()]
-        # print('pos', pos, '\n', 'neg', neg, '\n\n', "K", K, '\n')
+        
+        return pos, neg
+    
+    def retrieve_pairs_remake_2(self, K):
+            
+        pos_indices = torch.nonzero(K == 0, as_tuple=False)
+        pos = [tuple(idx) for idx in pos_indices.tolist()]
+        
+        # Only proceed if we have positive pairs
+        if not pos:
+            return [], []
+            
+        match_rows = (K == 0).any(dim=1)
+        match_cols = (K == 0).any(dim=0)
+        
+        # Only proceed if we have matching rows/cols
+        if not match_rows.any() or not match_cols.any():
+            return pos, []
+            
+        neg_mask = torch.zeros_like(K, dtype=torch.bool)
+        neg_mask[match_rows] = True
+        neg_mask[:, match_cols] = True
+        neg_mask[K == 0] = False
+        
+        neg_indices = torch.nonzero(neg_mask, as_tuple=False)
+        neg = [tuple(idx) for idx in neg_indices.tolist()]
+        
         return pos, neg
 
-
     # COSTUM DCS2 (G3) LOSS FUNCTION
-    def Criterion(self, distance_matrix=None, K=None):
-        pos, neg = self.retrieve_pairs_remake(K)
+    def Criterion(self, distance_matrix=None, K=None, mask=None):
+        pos, neg = self.retrieve_pairs_remake(K, mask)
 
         T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 6.0, 3.0, 3.0])
         L_contr = L_pos = L_neg = torch.tensor(0., device=device)
 
+        if not pos:
+            return None
+        
         if pos or neg:
             pos_indices = torch.tensor(pos, device=device).T if pos else torch.empty((2, 0), device=device,
                                                                                      dtype=torch.long)
@@ -477,9 +549,29 @@ class TrackerNN(nn.Module):
             L_pos = torch.clamp(C_pos - (T - pos_distances), min=0).mean() if pos else torch.tensor(0., device=device)
             L_neg = torch.clamp(C_neg - (neg_distances - T), min=0).mean() if neg else torch.tensor(0., device=device)
 
+        else:
+            return None
+        
         L_coef = L_contr + L_pos + L_neg
+        # print(L_coef)
 
         return L_coef
+    
+    def compute_masked_bce_loss(self, D_feat, K, mask):
+
+        # Apply mask to matrices
+        D_feat_masked = D_feat[mask]
+        K_masked = K[mask]
+
+        if not (K_masked == 0).any():
+            return None
+        
+        n_non_matches = max((K_masked == 1).sum(), 1) 
+        n_matches = max((K_masked == 0).sum(), 1)
+        pos_weight = (n_matches / n_non_matches)
+        criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
+        loss = criterion(D_feat_masked, K_masked)
+        return loss
 
 
     # CREATE C MATRIX (GTS) FOR TRACK INIT
@@ -527,19 +619,21 @@ class TrackerNN(nn.Module):
 
 
     def compute_pairwise_cosine_similarity(self, det_feats, trk_feats):
+        if trk_feats.shape[1] == 0:
+            return torch.empty(0, 0).to(device=device)
         # Flatten the spatial dimensions
-        m, c, h, w = det_feats.shape
+        m = det_feats.shape[0]
         n = trk_feats.shape[0]
         
-        # Reshape to (m, 512*3*3)
+        # # Reshape to (m, 512*3*3)
         det_feats = det_feats.view(m, -1)
         trk_feats = trk_feats.view(n, -1)
         
         # Choose ONE normalization method:
         
         # Option 1: Only L2 normalization (for cosine similarity)
-        det_feats = torch.nn.functional.normalize(det_feats, p=2, dim=1)
-        trk_feats = torch.nn.functional.normalize(trk_feats, p=2, dim=1)
+        # det_feats = torch.nn.functional.normalize(det_feats, p=2, dim=1)
+        # trk_feats = torch.nn.functional.normalize(trk_feats, p=2, dim=1)
         
         # OR
         
@@ -552,11 +646,14 @@ class TrackerNN(nn.Module):
         
         return similarity_matrix
 
+
     def forward(self, dets_all, tracking_name):  # FOR EACH SAMPLE IN EACH SCENE FORWARD BASED ON self.state
 
         tracking_state = self.tracking_states[tracking_name]
 
         tracking_state['frame_count'] += 1  # NEW FRAME
+
+        gamma = 0.1
 
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
@@ -581,6 +678,11 @@ class TrackerNN(nn.Module):
         else:
             trks_feats = torch.empty((0, 0)).to(device)
 
+        # if tracking_state['F2DS']:
+        #     trks_feats_c = torch.stack([feat for feat in tracking_state['F2DS']], dim=0)
+        # else:
+        #     trks_feats_c = torch.empty((0, 0)).to(device)
+
         # LOAD CORRESPONDING TRACKS IF EXISTANT
         trks = np.zeros((len(tracking_state['trackers']), 7))  # N x 7
         
@@ -598,7 +700,7 @@ class TrackerNN(nn.Module):
         D_mah = torch.tensor(mah_dist).to(device)
 
         # FEATURE FUSION (EXISTS IN EVERY STATE)
-        det_feats = self.feature_fusion(F2D, F3D, cam_onehot_vector)
+        det_feats, F2DS = self.feature_fusion(F2D, F3D, cam_onehot_vector)
 
         # CREATE FEATURE MAP BASED ON FEATURES OF DETS AND TRACKS
         feature_map = self.expand_and_concat(det_feats, trks_feats)
@@ -606,76 +708,55 @@ class TrackerNN(nn.Module):
         # DISTANCE COMBINATION STAGE 1 (EXISTS IN EVERY STATE)
         D_feat = self.distance_combination_stage_1(feature_map)
 
+        cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
         # DISTANCE COMBINATION STAGE 2
         # IF STATE == 1 THEN USE DCS2 ONLY
         # IF STATE == 2 WE USE TRACK_INIT BUT (INHERINTENLY) IT NEEDS DCS2
         if self.state >= 1:
             point_five = torch.tensor(0.5).to(device)
+            one = torch.tensor(1.0).to(device)
             a, b = self.distance_combination_stage_2(feature_map)
 
             if self.training == True:
-                warmup_factor = min(self.epoch  / 5.0, 1.0)
+                warmup_factor = min(self.epoch  / 5, 1.0)
                 a = a * warmup_factor
 
-            # K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
-            #                 prev_gts=prev_gts, epoch=self.epoch)  
-            
-            # if K.shape[0] > 0:
-
-            #     D_feat = K
-            #     # sim_matrix = self.compute_pairwise_cosine_similarity(det_feats, trks_feats)
-            #     # print(K, '\n', sim_matrix)
-            # else:
-            #     D_feat = torch.ones_like(D_feat)
-
-            # print(f"D_mah range: [{D_mah.min():.3f}, {D_mah.max():.3f}], mean: {D_mah.mean():.3f}")
-            # print(f"D_feat range: [{D_feat.min():.3f}, {D_feat.max():.3f}], mean: {D_feat.mean():.3f}")
-            
-            # # Check α,β values
-            # print(f"Alpha range: [{a.min():.3f}, {a.max():.3f}], mean: {a.mean():.3f}")
-            # print(f"Beta range: [{b.min():.3f}, {b.max():.3f}], mean: {b.mean():.3f}")
-
-            D_module = D_mah + (a * (D_feat - (point_five + b)))
-
-            # print(f"D_module range: [{D_module.min():.3f}, {D_module.max():.3f}]")
-
-            # print(D_feat, '\n', a, b, '\n', D_module, '\n', D_mah, '\n', K, '\n\n')
+            D_module = D_mah + (a * ( (D_feat) - (point_five + b)))
 
         # IF WE TRAIN FOR D_FEAT
         # THERE IS NO VAL MODE IN STAGE 1 OF DC
         if self.training == True and self.state == 0:
-            # tracking_state['mahanalobis_thresh'] = 0.1
-            K = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
+            K, mask = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
                                             prev_gts=prev_gts, epoch=self.epoch)  
                             # K = torch.randint(0, 2, D_mah.shape, dtype=torch.float, device=device)
             
             if K.shape[0] > 0:
-                # sim_matrix = self.compute_pairwise_cosine_similarity(det_feats, trks_feats)
-                # print(K, '\n', sim_matrix)
-                n_non_matches = max((K == 1).sum(), 1) 
-                n_matches = max((K == 0).sum(), 1)
-                matrix_density = (K.shape[0] * K.shape[1]) / (K.shape[0] + K.shape[1])
-                pos_weight =  matrix_density # * (n_matches / n_non_matches)
-                # pos_weight = torch.clamp(pos_weight, min=0.1, max=10.0)
-                criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
-                loss = criterion(D_feat, K)
+                loss = self.compute_masked_bce_loss(D_feat, K, mask)
+
+                # n_non_matches = max((K == 1).sum(), 1) 
+                # n_matches = max((K == 0).sum(), 1)
+                # matrix_density = (K.shape[0] * K.shape[1]) / (K.shape[0] + K.shape[1])
+                # pos_weight = matrix_density  # * (n_matches / n_non_matches)
+                # # # pos_weight = torch.clamp(pos_weight, min=0.1, max=10.0)
+                # criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
+                # loss = criterion(D_feat, K)
 
             D = mah_dist
 
         # IF TRAIN AND WE TRAIN FOR COMBINATION STAGE 2
         if self.training == True and self.state == 1:
-            # tracking_state['mahanalobis_thresh'] = 0.1
-            K = self.construct_K_matrix(distance_matrix=D_module, dets=dets, curr_gts=curr_gts, trks=trks,
+            K, mask = self.construct_K_matrix(distance_matrix=D_module, dets=dets, curr_gts=curr_gts, trks=trks,
                                         prev_gts=prev_gts, epoch=self.epoch)
             
             if K.shape[0] > 0:
-                loss = self.Criterion(D_module, K)  # criterion is costum loss
+                # print(cos_met, K)
+                loss = self.Criterion(D_module, K, mask)  # criterion is costum loss
                 # print(D_feat, K)
 
             D = D_module.detach().cpu().numpy()  
 
         # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
-        if not self.training or self.state == 2:
+        if self.training == False or self.state == 2:
             D = D_module.cpu().numpy()  
 
         # GREEDY MATCH
@@ -695,6 +776,8 @@ class TrackerNN(nn.Module):
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
                 trk.update(dets[d, :][0], info[d, :][0])
                 trk.track_score = info[d, :][0][-1]
+                blended_feature = det_feats[d].detach() * gamma + trks_feats[t] * (1.0- gamma)
+                tracking_state['features'][t] = blended_feature.squeeze(0)
 
         # NEW TRACKS INITIALIZATION
         if self.state == 2:  # IF AND ONLY IF STATE IS 2 (NOT 0 OR 1)
@@ -709,22 +792,34 @@ class TrackerNN(nn.Module):
                         new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
                         tracking_state['trackers'].append(new_track)
                         tracking_state['features'].append(det_feats[idx].detach())
+                        # tracking_state['F2DS'].append(F2DS[idx].detach())
 
                 if curr_gts.shape[0] != 0  and self.training == True:
                     C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
                     loss = self.criterion(P[unmatched_dets], C)  # criterion is nn.BCELoss()
 
-        # INITIALIZE BASED ON GTS
-        else:
-          if unmatched_dets.shape[0] > 0 and curr_gts.shape[0] > 0:
-                C = torch.zeros(dets.shape[0], 1)
-                C[unmatched_dets] = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
+        # # INITIALIZE BASED ON GTS IF ON TRAIN
+        # if self.training == True:
+        #   if unmatched_dets.shape[0] > 0 and curr_gts.shape[0] > 0:
+        #         C = torch.zeros(dets.shape[0], 1)
+        #         C[unmatched_dets] = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
 
-                for idx in unmatched_dets:
-                    if C[idx] > tracking_state['track_init_thresh']:
-                        new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
-                        tracking_state['trackers'].append(new_track)
-                        tracking_state['features'].append(det_feats[idx].detach())
+        #         for idx in unmatched_dets:
+        #             if C[idx] > tracking_state['track_init_thresh']:
+        #                 new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
+        #                 tracking_state['trackers'].append(new_track)
+        #                 tracking_state['features'].append(det_feats[idx].detach())
+        
+        # meaning if val
+        else:
+        # create and initialise new trackers for unmatched detections
+            for i in unmatched_dets:  # a scalar of index
+                detection_score = info[i][-1]
+                track_score = detection_score
+                trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, tracking_name)
+                tracking_state['trackers'].append(trk)
+                tracking_state['features'].append(det_feats[i].detach())
+                # tracking_state['F2DS'].append(F2DS[i].detach())
 
         # TRACK MANAGEMENT
         ret = []
@@ -738,6 +833,7 @@ class TrackerNN(nn.Module):
             if trk.time_since_update >= tracking_state['max_age']:
                 tracking_state['trackers'].pop(i)
                 tracking_state['features'].pop(i)
+                # tracking_state['F2DS'].pop(i)
 
         # RETURN CURRENT TRACKS AND LOSS
         if len(ret) > 0:
