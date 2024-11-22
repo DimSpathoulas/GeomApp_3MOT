@@ -78,11 +78,14 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_057.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_057.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
+    parser.add_argument('--svd', type=str,
+                    default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/svd_matrices.pkl",
+                    help='SVD matrices for lower representation')
 
     parser.add_argument('--trainval', type=str, default=0,
                         help='Set this to one if you want Train-Val in one go.\
@@ -170,12 +173,19 @@ def track_nuscenes():
     with open(dets_train, 'rb') as f:
         all_results = pickle.load(f)
 
+    with open(args.svd, 'rb') as f:
+        svd_data = pickle.load(f)
+
+    svd_matrices = svd_data['svd_matrices']
+    mean_vectors = svd_data['mean_vectors']
+    std_vectors = svd_data['std_vectors']
+
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
     total_time = 0.0
     total_frames = 0
 
-    writer = SummaryWriter('runs/empty')
+    # writer = SummaryWriter('runs/empty')
 
     for epoch in range(EPOCHS):
 
@@ -254,6 +264,27 @@ def track_nuscenes():
                             cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
                             info[name].append(dets_outputs['pred_score'])
 
+                # projection
+                for name in NUSCENES_TRACKING_NAMES:
+                    if len(pcbs[name]) == 0:
+                        continue
+
+                    mean_vector = mean_vectors[name]
+                    std_vector = std_vectors[name]
+                    projection_matrix = svd_matrices[name]
+
+                    features = np.array([feature.flatten() for feature in pcbs[name]])  # Shape: (num_features, 4608)
+
+                    # Mean-shift and normalize all features
+                    normalized_features = (features - mean_vector) / std_vector  # Shape: (num_features, 4608)
+
+                    # Project all features to lower dimensions
+                    reduced_projection_matrix = projection_matrix[:1152, :]
+                    projected_features = np.dot(normalized_features, reduced_projection_matrix.T)
+                    projected_features = projected_features.reshape(-1, 128, 3, 3)
+
+                    pcbs[name] = projected_features
+
                 dets_all = {tracking_name: {'dets': np.array(dets[tracking_name]),
                                             'pcbs': np.array(pcbs[tracking_name]),
                                             'fvecs': np.array(fvecs[tracking_name]),
@@ -271,7 +302,7 @@ def track_nuscenes():
                 sample_loss = None
                 
                 # train
-                cs = 1.0
+                cs = 0
                 if epoch < EPOCHS - 1:
                     for tracking_name in NUSCENES_TRACKING_NAMES:
                         if dets_all[tracking_name]['dets'].shape[0] > 0\
@@ -316,7 +347,7 @@ def track_nuscenes():
 
                 if epoch < EPOCHS - 1 and sample_loss is not None:
                     # sample_loss.div(cs)
-                    # cs = 1
+                    # cs = 0
                     sample_loss.backward()
                     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
                     optimizer.step()
@@ -345,41 +376,41 @@ def track_nuscenes():
 
         # scheduler.step(epoch_loss.item())
 
-        for name, param in Tracker.G1.named_parameters():
-            if param.grad is not None:
-                writer.add_scalar(f'Gradients_G1/{name}/norm', param.grad.norm().item(), epoch)
-                writer.add_histogram(f'Gradients_G1/{name}/histogram', param.grad, epoch)
-                writer.add_histogram(f'Weights_G1/{name}/histogram', param.data, epoch)
-                writer.add_scalar(f'Gradients_G1/Mean/{name}', param.grad.mean().item(), epoch)
-                writer.add_scalar(f'Gradients_G1/Std/{name}', param.grad.std().item(), epoch)
+    #     for name, param in Tracker.G1.named_parameters():
+    #         if param.grad is not None:
+    #             writer.add_scalar(f'Gradients_G1/{name}/norm', param.grad.norm().item(), epoch)
+    #             writer.add_histogram(f'Gradients_G1/{name}/histogram', param.grad, epoch)
+    #             writer.add_histogram(f'Weights_G1/{name}/histogram', param.data, epoch)
+    #             writer.add_scalar(f'Gradients_G1/Mean/{name}', param.grad.mean().item(), epoch)
+    #             writer.add_scalar(f'Gradients_G1/Std/{name}', param.grad.std().item(), epoch)
 
-        for name, param in Tracker.G2.named_parameters():
-            if param.grad is not None:
-                writer.add_scalar(f'Gradients_G2/{name}/norm', param.grad.norm().item(), epoch)
-                writer.add_histogram(f'Gradients_G2/{name}/histogram', param.grad, epoch)
-                writer.add_histogram(f'Weights_G2/{name}/histogram', param.data, epoch)
-                writer.add_scalar(f'Gradients_G2/Mean/{name}', param.grad.mean().item(), epoch)
-                writer.add_scalar(f'Gradients_G2/Std/{name}', param.grad.std().item(), epoch)
+    #     for name, param in Tracker.G2.named_parameters():
+    #         if param.grad is not None:
+    #             writer.add_scalar(f'Gradients_G2/{name}/norm', param.grad.norm().item(), epoch)
+    #             writer.add_histogram(f'Gradients_G2/{name}/histogram', param.grad, epoch)
+    #             writer.add_histogram(f'Weights_G2/{name}/histogram', param.data, epoch)
+    #             writer.add_scalar(f'Gradients_G2/Mean/{name}', param.grad.mean().item(), epoch)
+    #             writer.add_scalar(f'Gradients_G2/Std/{name}', param.grad.std().item(), epoch)
 
-        for name, param in Tracker.G3.named_parameters():
-            if param.grad is not None:
-                writer.add_scalar(f'Gradients_G3/{name}/norm', param.grad.norm().item(), epoch)
-                writer.add_histogram(f'Gradients_G3/{name}/histogram', param.grad, epoch)
-                writer.add_histogram(f'Weights_G3/{name}/histogram', param.data, epoch)
-                writer.add_scalar(f'Gradients_G3/Mean/{name}', param.grad.mean().item(), epoch)
-                writer.add_scalar(f'Gradients_G3/Std/{name}', param.grad.std().item(), epoch)
+    #     for name, param in Tracker.G3.named_parameters():
+    #         if param.grad is not None:
+    #             writer.add_scalar(f'Gradients_G3/{name}/norm', param.grad.norm().item(), epoch)
+    #             writer.add_histogram(f'Gradients_G3/{name}/histogram', param.grad, epoch)
+    #             writer.add_histogram(f'Weights_G3/{name}/histogram', param.data, epoch)
+    #             writer.add_scalar(f'Gradients_G3/Mean/{name}', param.grad.mean().item(), epoch)
+    #             writer.add_scalar(f'Gradients_G3/Std/{name}', param.grad.std().item(), epoch)
 
-        for name, param in Tracker.G4.named_parameters():
-            if param.grad is not None:
-                writer.add_scalar(f'Gradients_G4/{name}/norm', param.grad.norm().item(), epoch)
-                writer.add_histogram(f'Gradients_G4/{name}/histogram', param.grad, epoch)
-                writer.add_histogram(f'Weights_G4/{name}/histogram', param.data, epoch)
-                writer.add_scalar(f'Gradients_G4/Mean/{name}', param.grad.mean().item(), epoch)
-                writer.add_scalar(f'Gradients_G4/Std/{name}', param.grad.std().item(), epoch)
+    #     for name, param in Tracker.G4.named_parameters():
+    #         if param.grad is not None:
+    #             writer.add_scalar(f'Gradients_G4/{name}/norm', param.grad.norm().item(), epoch)
+    #             writer.add_histogram(f'Gradients_G4/{name}/histogram', param.grad, epoch)
+    #             writer.add_histogram(f'Weights_G4/{name}/histogram', param.data, epoch)
+    #             writer.add_scalar(f'Gradients_G4/Mean/{name}', param.grad.mean().item(), epoch)
+    #             writer.add_scalar(f'Gradients_G4/Std/{name}', param.grad.std().item(), epoch)
 
-        writer.flush()
+    #     writer.flush()
 
-    writer.close()
+    # writer.close()
 
     # # save tracking results after inference
     # save_tracker_states(Tracker, save_model_state)

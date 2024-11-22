@@ -103,27 +103,27 @@ class TrackerNN(nn.Module):
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(1536, 4608),
+            nn.Linear(1536, 1152),
             # nn.Dropout(0.1),
             # nn.Linear(512, 4608)
         )
         
         self.G2 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(256, 128),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(128, 1),
+            nn.Linear(32, 1),
             nn.Sigmoid()
         )
 
         self.G3 = nn.Sequential(
-            nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
-            nn.Linear(256, 128),
+            nn.Linear(64, 32),
             nn.ReLU(),
             nn.Dropout(0.1),
             nn.Linear(128, 2)
@@ -294,11 +294,12 @@ class TrackerNN(nn.Module):
         cam_feats = torch.cat((F2D, cam_onehot_vector), dim=1)
         cam_feats = self.G1(cam_feats)
 
-        cam_feats = cam_feats.reshape(cam_feats.shape[0], 512, 3, 3)
-
+        cam_feats = cam_feats.reshape(cam_feats.shape[0],F3D.shape[1] , 3, 3)
+        lidar_feats = F3D
+        
         # # L2 normalize across spatial dimensions
-        lidar_feats = torch.nn.functional.normalize(F3D.view(cam_feats.shape[0], -1), p=2, dim=1)
-        lidar_feats = lidar_feats.view(lidar_feats.shape[0], 512, 3, 3)
+        # lidar_feats = torch.nn.functional.normalize(F3D.view(cam_feats.shape[0], -1), p=2, dim=1)
+        # lidar_feats = lidar_feats.view(lidar_feats.shape[0], lidar_feats.shape[1], 3, 3)
 
         # cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
         # cam_feats = cam_feats.view(cam_feats.shape[0], 64, 3, 3)
@@ -478,6 +479,7 @@ class TrackerNN(nn.Module):
                         dist_2[j] <= threshold
                     ):
                     K[d, t] = 0
+                    mask[d, t] = True
 
                 if dist_1[i] <= threshold and dist_2[j] <= threshold:
                     mask[d, t] = True
@@ -497,31 +499,6 @@ class TrackerNN(nn.Module):
         
         return pos, neg
     
-    def retrieve_pairs_remake_2(self, K):
-            
-        pos_indices = torch.nonzero(K == 0, as_tuple=False)
-        pos = [tuple(idx) for idx in pos_indices.tolist()]
-        
-        # Only proceed if we have positive pairs
-        if not pos:
-            return [], []
-            
-        match_rows = (K == 0).any(dim=1)
-        match_cols = (K == 0).any(dim=0)
-        
-        # Only proceed if we have matching rows/cols
-        if not match_rows.any() or not match_cols.any():
-            return pos, []
-            
-        neg_mask = torch.zeros_like(K, dtype=torch.bool)
-        neg_mask[match_rows] = True
-        neg_mask[:, match_cols] = True
-        neg_mask[K == 0] = False
-        
-        neg_indices = torch.nonzero(neg_mask, as_tuple=False)
-        neg = [tuple(idx) for idx in neg_indices.tolist()]
-        
-        return pos, neg
 
     # COSTUM DCS2 (G3) LOSS FUNCTION
     def Criterion(self, distance_matrix=None, K=None, mask=None):
@@ -732,14 +709,6 @@ class TrackerNN(nn.Module):
             
             if K.shape[0] > 0:
                 loss = self.compute_masked_bce_loss(D_feat, K, mask)
-
-                # n_non_matches = max((K == 1).sum(), 1) 
-                # n_matches = max((K == 0).sum(), 1)
-                # matrix_density = (K.shape[0] * K.shape[1]) / (K.shape[0] + K.shape[1])
-                # pos_weight = matrix_density  # * (n_matches / n_non_matches)
-                # # # pos_weight = torch.clamp(pos_weight, min=0.1, max=10.0)
-                # criterion = nn.BCELoss(weight=torch.tensor([pos_weight], device=K.device))
-                # loss = criterion(D_feat, K)
 
             D = mah_dist
 
