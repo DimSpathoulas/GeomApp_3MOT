@@ -148,32 +148,6 @@ def visualize_pca_3d(pcds_all, fvs_all):
         plt.close()  # Close the plot to free memory
 
 
-def visualize_density_estimation(pcds_all, fvs_all):
-    kde = KernelDensity(kernel='gaussian', bandwidth=0.5)
-
-    for name in NUSCENES_TRACKING_NAMES:
-        pcds_reshaped = pcds_all[name].reshape(pcds_all[name].shape[0], -1)
-        kde.fit(pcds_reshaped)
-        pcds_samples = kde.sample(1000)
-
-        kde.fit(fvs_all[name])
-        fvs_samples = kde.sample(1000)
-
-        # KDE for point cloud descriptors (pcds)
-        plt.figure(figsize=(8, 6))
-        sns.kdeplot(np.vstack(pcds_samples).T)  # Transpose to create 2D data for KDE
-        plt.title(f'KDE of pcds for {name}')
-        plt.savefig(f'features/density/pcds_kde_{name}.png')  # Save the plot as a PNG file
-        plt.close()  # Close the plot to free memory
-
-        # KDE for feature vectors (fvs)
-        plt.figure(figsize=(8, 6))
-        sns.kdeplot(np.vstack(fvs_samples).T)  # Transpose to create 2D data for KDE
-        plt.title(f'KDE of fvs for {name}')
-        plt.savefig(f'features/density/fvs_kde_{name}.png')  # Save the plot as a PNG file
-        plt.close()  # Close the plot to free memory
-
-
 def visualize_umap(pcds_all, fvs_all):
     for name in NUSCENES_TRACKING_NAMES:
         # Set parameters with cosine metric
@@ -509,9 +483,6 @@ def feature_analysis():
 
     visualize_pca(pcds_all, fvs_all)
     print('done with 4')
-
-    # visualize_density_estimation(pcds_all, fvs_all)
-    # print('done with 5')
 
     visualize_pca_3d(pcds_all, fvs_all)
     print('done with 6')
