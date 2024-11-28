@@ -3,16 +3,11 @@ Part of my master thesis: **Probabilistic 3D Multi-Modal Multi-Object Tracking U
 ## Overview
 This is the main module.
 
-# Notes - Kosmas
-- Add ReLu() in g1 in the end.
-- 
-
 python cov_calc_cent_orient_cor.py > cov_calc_cent_orient_cor.txt
 
-python evaluate_nuscenes.py --output_dir results car_pcds_gamma01_tanh_b_057_selective_thresh.json > results/car_pcds_gamma01_tanh_b_057_selective_thresh.txt
+python evaluate_nuscenes.py --output_dir results svd_matrices_spatial64_cos_class.json > results/svd_matrices_spatial64_cos_class.txt
 
 val_conv_layer_025.pkl
 
-
-python g2_v4.py
-python evaluate_nuscenes.py --output_dir training_outputs output_g2_v4.json > training_outputs/val_model_g2_learn_metrics.txt
+train_conv_layer6455_thr034
+val_conv_layer6455_thr034

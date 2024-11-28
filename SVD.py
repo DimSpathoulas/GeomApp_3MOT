@@ -16,13 +16,33 @@ NUSCENES_TRACKING_NAMES = [
     'truck'
 ]
 
+def create_box_annotations(sample_token,nusc):
+    ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+
+    sample = nusc.get('sample', sample_token)
+    ann_token = sample['anns']
+
+    for ann in ann_token:
+
+        ann_meta = nusc.get('sample_annotation', ann)
+        t_name = ann_meta['category_name']
+
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            if tracking_name in t_name:
+
+                trs = np.array(ann_meta['translation'])
+
+                ground_truths[tracking_name].append(trs)
+
+    return ground_truths
+
 
 def svd():
     parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
     parser.add_argument('--version', type=str, default='v1.0-trainval', help='NuScenes dataset version')
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval', help='Root directory of the NuScenes dataset')
     parser.add_argument('--data', type=str, default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl", help='Path to detections data')
-    parser.add_argument('--output_path', type=str, default="svd_matrices.pkl", help='Path to save the SVD projection matrices')
+    parser.add_argument('--output_path', type=str, default="svd_matrices_2.pkl", help='Path to save the SVD projection matrices')
 
     args = parser.parse_args()
     data = args.data
@@ -49,17 +69,27 @@ def svd():
         first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
         current_sample_token = first_sample_token
 
+        current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+
         while current_sample_token != '':
+            current_ground_truths = create_box_annotations(current_sample_token, nusc)
 
             for i, item in enumerate(all_results[current_sample_token]):
                 for name in NUSCENES_TRACKING_NAMES:
                     for dets_outputs in item[name]:
-                        if dets_outputs['pred_score'] > 0.37:
-                            pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
-                            pcds_all[name].append(pcd_feature)
-                            fvs_all[name].append(dets_outputs['feature_vector'])
+                        det_coords = np.array(dets_outputs['box'][:2])
+
+                        for gt_coords in current_ground_truths[name]:
+                            gt_coords = np.array(gt_coords[:2])
+                            distance = np.linalg.norm(det_coords - gt_coords)
+                            if distance < 2:
+                                pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
+                                pcds_all[name].append(pcd_feature)
+                                fvs_all[name].append(dets_outputs['feature_vector'])
 
             current_sample_token = nusc.get('sample', current_sample_token)['next']
+
+            current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
 
         processed_scene_tokens.add(scene_token)
 
