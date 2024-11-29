@@ -27,61 +27,27 @@ NUSCENES_TRACKING_NAMES = [
 ]
 
 
-def visualize_feature_distributions(pcds_all, fvs_all):
+def visualize_feature_distributions(name, pcds, fvs):
     # Visualize pcds feature distributions
-    for name in NUSCENES_TRACKING_NAMES:
-        plt.figure(figsize=(12, 6))
-        sns.histplot(pcds_all[name].flatten(), kde=True)
-        plt.title(f'Feature distribution of pcds for {name}')
-        plt.savefig(f'features/distributions/pcds_distribution_{name}.png')  # Save the plot as a PNG file
-        plt.close()  # Close the plot to free memory
 
-    # Visualize fvs feature distributions
-    for name in NUSCENES_TRACKING_NAMES:
-        plt.figure(figsize=(12, 6))
-        sns.histplot(fvs_all[name].flatten(), kde=True)
-        plt.title(f'Feature distribution of fvs for {name}')
-        plt.savefig(f'features/distributions/fvs_distribution_{name}.png')  # Save the plot as a PNG file
-        plt.close()  # Close the plot to free memory
-
-
-def visualize_feature_statistics(name, pcds_all, fvs_all):
-    # Calculate the mean and variance of pcds
-    pcds_mean = np.mean(pcds_all, axis=0)  # Shape (512, 3, 3)
-    pcds_var = np.var(pcds_all, axis=0)  # Shape (512, 3, 3)
-
-    # If you want to plot the mean and variance, you might want to flatten the variance
-    pcds_var_flat = pcds_var.reshape(pcds_var.shape[0], -1)  # Shape (512, 9)
-
-    # Calculate a single variance value per feature if needed, for example, by taking the mean across the last dimensions
-    pcds_var_mean = np.mean(pcds_var_flat, axis=1)  # Shape (512,)
-
-    # Plot mean and variance
     plt.figure(figsize=(12, 6))
-    plt.plot(pcds_mean.flatten(), label='Mean of pcds')
-    plt.plot(pcds_var_mean, label='Mean Variance of pcds', linestyle='--')
-    plt.title(f'Mean and Variance of pcds for {name}')
-    plt.legend()
-    plt.savefig(f'features/statistics/pcds_statistics_{name}.png')  # Save the plot as a PNG file
+    sns.histplot(pcds[name].flatten(), kde=True)
+    plt.title(f'Feature distribution of pcds for {name}')
+    plt.savefig(f'features/distributions/pcds_distribution_{name}.png')  # Save the plot as a PNG file
     plt.close()  # Close the plot to free memory
 
-    # Repeat similar steps for fvs
-    fvs_mean = np.mean(fvs_all[name], axis=0)  # Shape (1024,)
-    fvs_var = np.var(fvs_all[name], axis=0)  # Shape (1024,)
+    # Visualize fvs feature distributions
 
     plt.figure(figsize=(12, 6))
-    plt.plot(fvs_mean, label='Mean of fvs')
-    plt.plot(fvs_var, label='Variance of fvs', linestyle='--')
-    plt.title(f'Mean and Variance of fvs for {name}')
-    plt.legend()
-    plt.savefig(f'features/statistics/fvs_statistics_{name}.png')  # Save the plot as a PNG file
+    sns.histplot(fvs[name].flatten(), kde=True)
+    plt.title(f'Feature distribution of fvs for {name}')
+    plt.savefig(f'features/distributions/fvs_distribution_{name}.png')  # Save the plot as a PNG file
     plt.close()  # Close the plot to free memory
 
 
 def visualize_feature_correlation(name, pcds_all, fvs_all):
 
-    pcds_reshaped = pcds_all.reshape(pcds_all.shape[0], -1)
-    pcds_corr = np.corrcoef(pcds_reshaped, rowvar=False)
+    pcds_corr = np.corrcoef(pcds_all, rowvar=False)
     fvs_corr = np.corrcoef(fvs_all, rowvar=False)
 
     plt.figure(figsize=(10, 8))
@@ -100,8 +66,7 @@ def visualize_feature_correlation(name, pcds_all, fvs_all):
 def visualize_pca(name, pcds_all, fvs_all):
     pca = PCA(n_components=2)
 
-    pcds_reshaped = pcds_all.reshape(pcds_all.shape[0], -1)
-    pcds_pca = pca.fit_transform(pcds_reshaped)
+    pcds_pca = pca.fit_transform(pcds_all)
     fvs_pca = pca.fit_transform(fvs_all)
 
     plt.figure(figsize=(8, 6))
@@ -117,194 +82,150 @@ def visualize_pca(name, pcds_all, fvs_all):
     plt.close()  # Close the plot to free memory
 
 
-def visualize_pca_3d(pcds_all, fvs_all):
-    for name in NUSCENES_TRACKING_NAMES:
-        pca = PCA(n_components=3)
+def visualize_pca_3d(name, pcds_all, fvs_all):
 
-        # fvs_reshaped = fvs_all[name].reshape(fvs_all[name].shape[0], -1)
-        # fvs_pca = pca.fit_transform(fvs_reshaped)
+    pca = PCA(n_components=3)
 
-        pcds_reshaped = pcds_all[name].reshape(pcds_all[name].shape[0], -1)
-        pcds_pca = pca.fit_transform(pcds_reshaped)
+    pcds_pca = pca.fit_transform(pcds_all)
 
-        # fig = plt.figure(figsize=(10, 8))
-        # ax = fig.add_subplot(111, projection='3d')
-        # ax.scatter(fvs_pca[:, 0], fvs_pca[:, 1], fvs_pca[:, 2], alpha=0.6)
-        # ax.set_title(f'3D PCA of fvs for {name}')
-        # ax.set_xlabel('Principal Component 1')
-        # ax.set_ylabel('Principal Component 2')
-        # ax.set_zlabel('Principal Component 3')
-        # plt.savefig(f'features/pca/fvs_pca_3d_{name}.png')  # Save the plot as a PNG file
-        # plt.close()  # Close the plot to free memory
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(pcds_pca[:, 0], pcds_pca[:, 1], pcds_pca[:, 2], alpha=0.6)
+    ax.set_title(f'3D PCA of pcds for {name}')
+    ax.set_xlabel('Principal Component 1')
+    ax.set_ylabel('Principal Component 2')
+    ax.set_zlabel('Principal Component 3')
+    plt.savefig(f'features/pca/pcds_pca_3d_{name}.png')  # Save the plot as a PNG file
+    plt.close()  # Close the plot to free memory
 
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(pcds_pca[:, 0], pcds_pca[:, 1], pcds_pca[:, 2], alpha=0.6)
-        ax.set_title(f'3D PCA of pcds for {name}')
-        ax.set_xlabel('Principal Component 1')
-        ax.set_ylabel('Principal Component 2')
-        ax.set_zlabel('Principal Component 3')
-        plt.savefig(f'features/pca/pcds_pca_3d_{name}.png')  # Save the plot as a PNG file
-        plt.close()  # Close the plot to free memory
+    fvs_pca = pca.fit_transform(fvs_all)
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(fvs_pca[:, 0], fvs_pca[:, 1], fvs_pca[:, 2], alpha=0.6)
+    ax.set_title(f'3D PCA of fvs for {name}')
+    ax.set_xlabel('Principal Component 1')
+    ax.set_ylabel('Principal Component 2')
+    ax.set_zlabel('Principal Component 3')
+    plt.savefig(f'features/pca/fvs_pca_3d_{name}.png')  # Save the plot as a PNG file
+    plt.close()  # Close the plot to free memory
 
 
-def visualize_umap(pcds_all, fvs_all):
-    for name in NUSCENES_TRACKING_NAMES:
-        # Set parameters with cosine metric
-        reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', n_components=2)
-
-        # Fit and transform pcds
-        pcds_umap = reducer.fit_transform(pcds_all[name].reshape(len(pcds_all[name]), -1))
-
-        plt.figure(figsize=(8, 6))
-        plt.scatter(pcds_umap[:, 0], pcds_umap[:, 1], alpha=0.5, label='pcds')
-        plt.title(f'UMAP of pcds for {name} with Cosine Metric')
-        plt.savefig(f'features/umap/umap_pcds_{name}_cosine.png')
-        plt.close()
-
-        # Fit and transform fvs
-        fvs_umap = reducer.fit_transform(fvs_all[name])
-
-        plt.figure(figsize=(8, 6))
-        plt.scatter(fvs_umap[:, 0], fvs_umap[:, 1], alpha=0.5, label='fvs')
-        plt.title(f'UMAP of fvs for {name} with Cosine Metric')
-        plt.savefig(f'features/umap/umap_fvs_{name}_cosine.png')
-        plt.close()
 
 
-def visualize_umap_3d(pcds_all, fvs_all):
-    for name in NUSCENES_TRACKING_NAMES:
-        reducer = umap.UMAP(n_components=3, n_neighbors=15, min_dist=0.1, metric='cosine')
-
-        pcds_umap = reducer.fit_transform(pcds_all[name].reshape(len(pcds_all[name]), -1))
-        fvs_umap = reducer.fit_transform(fvs_all[name])
-
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(pcds_umap[:, 0], pcds_umap[:, 1], pcds_umap[:, 2], alpha=0.6)
-        ax.set_title(f'3D UMAP of pcds for {name}')
-        plt.savefig(f'features/umap3d/umap_3d_pcds_{name}.png')
-        plt.close()
-
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(fvs_umap[:, 0], fvs_umap[:, 1], fvs_umap[:, 2], alpha=0.6)
-        ax.set_title(f'3D UMAP of fvs for {name}')
-        plt.savefig(f'features/umap3d/umap_3d_fvs_{name}.png')
-        plt.close()
 
 
-def visualize_isomap_3d(pcds_all, fvs_all):
-    for name in NUSCENES_TRACKING_NAMES:
-        n_neighbors = 20
+def visualize_umap(name, pcds_all, fvs_all):
+    # Set parameters with cosine metric
+    reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', n_components=2)
 
-        while True:
-            try:
-                # Convert data to lil_matrix to improve efficiency
-                pcds_lil = lil_matrix(pcds_all[name].reshape(len(pcds_all[name]), -1))
-                iso_pcds = Isomap(n_components=3, n_neighbors=n_neighbors)
-                pcds_iso = iso_pcds.fit_transform(pcds_lil)
+    # Fit and transform pcds
+    pcds_umap = reducer.fit_transform(pcds_all)
 
-                fvs_lil = lil_matrix(fvs_all[name])
-                iso_fvs = Isomap(n_components=3, n_neighbors=n_neighbors)
-                fvs_iso = iso_fvs.fit_transform(fvs_lil)
+    plt.figure(figsize=(8, 6))
+    plt.scatter(pcds_umap[:, 0], pcds_umap[:, 1], alpha=0.5, label='pcds')
+    plt.title(f'UMAP of pcds for {name} with Cosine Metric')
+    plt.savefig(f'features/umap/umap_pcds_{name}_cosine.png')
+    plt.close()
 
-                break  # Exit the loop if Isomap completes successfully
+    # Fit and transform fvs
+    fvs_umap = reducer.fit_transform(fvs_all[name])
 
-            except UserWarning as e:
-                if "connected components" in str(e):
-                    n_neighbors += 5  # Increase the number of neighbors if the graph is disconnected
-                    print(f"Increasing neighbors to {n_neighbors} for {name}")
-                else:
-                    raise e
-
-        # Plot and save Isomap results for pcds
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(pcds_iso[:, 0], pcds_iso[:, 1], pcds_iso[:, 2], alpha=0.6)
-        ax.set_title(f'3D Isomap of pcds for {name}')
-        plt.savefig(f'features/isomap/isomap_3d_pcds_{name}.png')
-        plt.close()
-
-        # Plot and save Isomap results for fvs
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(fvs_iso[:, 0], fvs_iso[:, 1], fvs_iso[:, 2], alpha=0.6)
-        ax.set_title(f'3D Isomap of fvs for {name}')
-        plt.savefig(f'features/isomap/isomap_3d_fvs_{name}.png')
-        plt.close()
+    plt.figure(figsize=(8, 6))
+    plt.scatter(fvs_umap[:, 0], fvs_umap[:, 1], alpha=0.5, label='fvs')
+    plt.title(f'UMAP of fvs for {name} with Cosine Metric')
+    plt.savefig(f'features/umap/umap_fvs_{name}_cosine.png')
+    plt.close()
 
 
-def visualize_tsne_3d(pcds_all, fvs_all):
-    for name in NUSCENES_TRACKING_NAMES:
-        tsne = TSNE(n_components=3, random_state=42)
+def visualize_umap_3d(name, pcds_all, fvs_all):
+    reducer = umap.UMAP(n_components=3, n_neighbors=15, min_dist=0.1, metric='cosine')
 
-        pcds_tsne = tsne.fit_transform(pcds_all[name].reshape(len(pcds_all[name]), -1))
-        fvs_tsne = tsne.fit_transform(fvs_all[name])
+    pcds_umap = reducer.fit_transform(pcds_all)
+    fvs_umap = reducer.fit_transform(fvs_all[name])
 
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(pcds_tsne[:, 0], pcds_tsne[:, 1], pcds_tsne[:, 2], alpha=0.6)
-        ax.set_title(f'3D t-SNE of pcds for {name}')
-        plt.savefig(f'features/tsne/tsne_3d_pcds_{name}.png')
-        plt.close()
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(pcds_umap[:, 0], pcds_umap[:, 1], pcds_umap[:, 2], alpha=0.6)
+    ax.set_title(f'3D UMAP of pcds for {name}')
+    plt.savefig(f'features/umap3d/umap_3d_pcds_{name}.png')
+    plt.close()
 
-        fig = plt.figure(figsize=(10, 8))
-        ax = fig.add_subplot(111, projection='3d')
-        ax.scatter(fvs_tsne[:, 0], fvs_tsne[:, 1], fvs_tsne[:, 2], alpha=0.6)
-        ax.set_title(f'3D t-SNE of fvs for {name}')
-        plt.savefig(f'features/tsne/tsne_3d_fvs_{name}.png')
-        plt.close()
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(fvs_umap[:, 0], fvs_umap[:, 1], fvs_umap[:, 2], alpha=0.6)
+    ax.set_title(f'3D UMAP of fvs for {name}')
+    plt.savefig(f'features/umap3d/umap_3d_fvs_{name}.png')
+    plt.close()
 
 
-# def visualize_lda_3d(pcds_all, fvs_all):
+def visualize_isomap_3d(name, pcds_all, fvs_all):
+    n_neighbors = 20
 
-#     all_pcds = []
-#     all_fvs = []
-#     all_labels = []
+    while True:
+        try:
+            # Convert data to lil_matrix to improve efficiency
+            pcds_lil = lil_matrix(pcds_all)
+            iso_pcds = Isomap(n_components=3, n_neighbors=n_neighbors)
+            pcds_iso = iso_pcds.fit_transform(pcds_lil)
 
-#     for i, name in enumerate(NUSCENES_TRACKING_NAMES):
-#         all_pcds.append(pcds_all[name].reshape(len(pcds_all[name]), -1))
-#         all_fvs.append(fvs_all[name])
-#         all_labels.extend([i] * len(pcds_all[name]))
+            fvs_lil = lil_matrix(fvs_all[name])
+            iso_fvs = Isomap(n_components=3, n_neighbors=n_neighbors)
+            fvs_iso = iso_fvs.fit_transform(fvs_lil)
 
-#     all_pcds = np.vstack(all_pcds)
-#     all_fvs = np.vstack(all_fvs)
-#     all_labels = np.array(all_labels)
+            break  # Exit the loop if Isomap completes successfully
 
-#     lda = LinearDiscriminantAnalysis(n_components=3)
+        except UserWarning as e:
+            if "connected components" in str(e):
+                n_neighbors += 5  # Increase the number of neighbors if the graph is disconnected
+                print(f"Increasing neighbors to {n_neighbors} for {name}")
+            else:
+                raise e
 
-#     pcds_lda = lda.fit_transform(all_pcds, all_labels)
-#     fvs_lda = lda.fit_transform(all_fvs, all_labels)
+    # Plot and save Isomap results for pcds
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(pcds_iso[:, 0], pcds_iso[:, 1], pcds_iso[:, 2], alpha=0.6)
+    ax.set_title(f'3D Isomap of pcds for {name}')
+    plt.savefig(f'features/isomap/isomap_3d_pcds_{name}.png')
+    plt.close()
 
-#     fig = plt.figure(figsize=(10, 8))
-#     ax = fig.add_subplot(111, projection='3d')
-#     scatter = ax.scatter(pcds_lda[:, 0], pcds_lda[:, 1], pcds_lda[:, 2], c=all_labels, cmap='viridis', alpha=0.6)
-#     ax.set_title('3D LDA of pcds for all classes')
-#     plt.colorbar(scatter)
-#     plt.savefig('features/lda/lda_3d_pcds_all.png')
-#     plt.close()
+    # Plot and save Isomap results for fvs
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(fvs_iso[:, 0], fvs_iso[:, 1], fvs_iso[:, 2], alpha=0.6)
+    ax.set_title(f'3D Isomap of fvs for {name}')
+    plt.savefig(f'features/isomap/isomap_3d_fvs_{name}.png')
+    plt.close()
 
-#     fig = plt.figure(figsize=(10, 8))
-#     ax = fig.add_subplot(111, projection='3d')
-#     scatter = ax.scatter(fvs_lda[:, 0], fvs_lda[:, 1], fvs_lda[:, 2], c=all_labels, cmap='viridis', alpha=0.6)
-#     ax.set_title('3D LDA of fvs for all classes')
-#     plt.colorbar(scatter)
-#     plt.savefig('features/lda/lda_3d_fvs_all.png')
-#     plt.close()
+
+def visualize_tsne_3d(name, pcds_all, fvs_all):
+    tsne = TSNE(n_components=3, random_state=42)
+
+    pcds_tsne = tsne.fit_transform(pcds_all)
+    fvs_tsne = tsne.fit_transform(fvs_all[name])
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(pcds_tsne[:, 0], pcds_tsne[:, 1], pcds_tsne[:, 2], alpha=0.6)
+    ax.set_title(f'3D t-SNE of pcds for {name}')
+    plt.savefig(f'features/tsne/tsne_3d_pcds_{name}.png')
+    plt.close()
+
+    fig = plt.figure(figsize=(10, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(fvs_tsne[:, 0], fvs_tsne[:, 1], fvs_tsne[:, 2], alpha=0.6)
+    ax.set_title(f'3D t-SNE of fvs for {name}')
+    plt.savefig(f'features/tsne/tsne_3d_fvs_{name}.png')
+    plt.close()
+
 
 def visualize_lda_3d(pcds_all, fvs_all):
-    all_pcds = []
-    all_fvs = []
+
     all_labels = []
-
+    
     for name in NUSCENES_TRACKING_NAMES:
-        all_pcds.append(pcds_all[name].reshape(len(pcds_all[name]), -1))
-        all_fvs.append(fvs_all[name])
-        all_labels.extend([name] * len(pcds_all[name]))  # Use class names instead of numbers
-
-    all_pcds = np.vstack(all_pcds)
-    all_fvs = np.vstack(all_fvs)
+        all_labels.extend([name] * len(pcds_all[name]))
 
     # Encode class names to integers
     label_encoder = LabelEncoder()
@@ -312,8 +233,8 @@ def visualize_lda_3d(pcds_all, fvs_all):
 
     lda = LinearDiscriminantAnalysis(n_components=3)
 
-    pcds_lda = lda.fit_transform(all_pcds, encoded_labels)
-    fvs_lda = lda.fit_transform(all_fvs, encoded_labels)
+    pcds_lda = lda.fit_transform(pcds_all, encoded_labels)
+    fvs_lda = lda.fit_transform(fvs_all, encoded_labels)
 
     fig = plt.figure(figsize=(18, 12))  # Adjust figure size for more subplots
 
@@ -370,20 +291,51 @@ def visualize_lda_3d(pcds_all, fvs_all):
 
 
 def process_category(name, pcds, fvs):
-    visualize_feature_statistics(name, pcds, fvs)
     visualize_feature_correlation(name, pcds, fvs)
+    # visualize_feature_distributions(name, pcds, fvs)
     visualize_pca(name, pcds, fvs)
+    visualize_pca_3d(name, pcds, fvs)
+    visualize_umap(name, pcds, fvs)
+    visualize_umap_3d(name, pcds, fvs)
+    visualize_tsne_3d(name, pcds, fvs)
+    visualize_lda_3d(name, pcds, fvs)
+    # visualize_isomap_3d(pcds_all, fvs_all)
 
 
 def visualize_features_multiprocessing(pcds_all, fvs_all):
     processes = []
     for name in NUSCENES_TRACKING_NAMES:
-        p = mp.Process(target=process_category, args=(name, pcds_all[name], fvs_all[name]))
-        processes.append(p)
-        p.start()
 
-    for p in processes:
-        p.join()
+        pcds = pcds_all[name].reshape(len(pcds_all[name]), -1)
+        process_category(name, pcds, fvs_all[name])
+
+    #     p = mp.Process(target=process_category, args=(name, pcds, fvs_all[name]))
+    #     processes.append(p)
+    #     p.start()
+
+    # for p in processes:
+    #     p.join()
+
+
+def create_box_annotations(sample_token,nusc):
+    ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+
+    sample = nusc.get('sample', sample_token)
+    ann_token = sample['anns']
+
+    for ann in ann_token:
+
+        ann_meta = nusc.get('sample_annotation', ann)
+        t_name = ann_meta['category_name']
+
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            if tracking_name in t_name:
+
+                trs = np.array(ann_meta['translation'])
+
+                ground_truths[tracking_name].append(trs)
+
+    return ground_truths
 
 
 def feature_analysis():
@@ -395,7 +347,27 @@ def feature_analysis():
     parser.add_argument('--data', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
                         help='Path to detections, train split for train - val split for inference')
+    
+    parser.add_argument('--method', type=str,
+                    default=0,
+                    help='0 distance based, 1 threshold based')
 
+    parser.add_argument('--distance', type=str,
+                    default=2,
+                    help='Distance to groundtruths based denoising')
+    
+    parser.add_argument('--keep', type=str,
+                    default=True,
+                    help='True == Keep detections below distance threshold')
+    
+    parser.add_argument('--thresh_1', type=str,
+                    default=0.1,
+                    help='Lower threshold bound acceptance of detection')
+    
+    parser.add_argument('--thresh_2', type=str,
+                    default=0.95,
+                    help='Upper threshold bound acceptance of detection')
+    
     args = parser.parse_args()
     data = args.data
     data_root = args.data_root
@@ -409,7 +381,6 @@ def feature_analysis():
     os.makedirs('features/umap', exist_ok=True)
     os.makedirs('features/class_imbalance', exist_ok=True)
     os.makedirs('features/umap3d', exist_ok=True)
-    # os.makedirs('features/isomap', exist_ok=True)
     os.makedirs('features/tsne', exist_ok=True)
     os.makedirs('features/lda', exist_ok=True)
 
@@ -433,17 +404,43 @@ def feature_analysis():
         first_sample_token = nusc.get('scene', scene_token)['first_sample_token']
         current_sample_token = first_sample_token
 
+        current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
+
         while current_sample_token != '':
+
+            current_ground_truths = create_box_annotations(current_sample_token, nusc)
 
             for i, item in enumerate(all_results[current_sample_token]):
                 for name in NUSCENES_TRACKING_NAMES:
                     for dets_outputs in item[name]:
-                        if dets_outputs['pred_score'] > 0.57:
-                            pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
-                            pcds_all[name].append(pcd_feature)
-                            fvs_all[name].append(dets_outputs['feature_vector'])
+
+                        if args.method == 0:
+                            det_coords = np.array(dets_outputs['box'][:2])
+
+                            for gt_coords in current_ground_truths[name]:
+                                gt_coords = np.array(gt_coords[:2])
+                                distance = np.linalg.norm(det_coords - gt_coords)
+
+                                if args.keep:
+                                    if distance < args.distance:
+                                        pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
+                                        pcds_all[name].append(pcd_feature)
+                                        fvs_all[name].append(dets_outputs['feature_vector'])
+                                else:
+                                    if distance >= args.distance:
+                                        pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
+                                        pcds_all[name].append(pcd_feature)
+                                        fvs_all[name].append(dets_outputs['feature_vector'])
+
+                        else:
+                            if dets_outputs['pred_score'] > args.thresh_1 and dets_outputs['pred_score'] < args.thresh_2:
+                                pcd_feature = np.expand_dims(dets_outputs['point_cloud_features'], axis=0)
+                                pcds_all[name].append(pcd_feature)
+                                fvs_all[name].append(dets_outputs['feature_vector'])
 
             current_sample_token = nusc.get('sample', current_sample_token)['next']
+
+            current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
 
         processed_scene_tokens.add(scene_token)
 
@@ -460,7 +457,6 @@ def feature_analysis():
     object_counts = {name: pcds_all[name].shape[0] for name in NUSCENES_TRACKING_NAMES}
 
     for name in NUSCENES_TRACKING_NAMES:
-        print(f'Shape of pcds_all[{name}]: {pcds_all[name].shape}')
 
         plt.figure(figsize=(12, 6))
         plt.bar(object_counts.keys(), object_counts.values())
@@ -472,37 +468,7 @@ def feature_analysis():
         plt.savefig('features/class_imbalance/object_counts_histogram.png')
         plt.close()
 
-    visualize_feature_distributions(pcds_all, fvs_all)
-    print('done with 1')
-
-    visualize_feature_statistics(pcds_all, fvs_all)
-    print('done with 2')
-
-    visualize_feature_correlation(pcds_all, fvs_all)
-    print('done with 3')
-
-    visualize_pca(pcds_all, fvs_all)
-    print('done with 4')
-
-    visualize_pca_3d(pcds_all, fvs_all)
-    print('done with 6')
-
-    visualize_umap(pcds_all, fvs_all)
-    print('done with all')
-
-    visualize_umap_3d(pcds_all, fvs_all)
-    print('done with UMAP 3D')
-
-    # visualize_isomap_3d(pcds_all, fvs_all)
-    # print('done with Isomap 3D')
-
-    visualize_tsne_3d(pcds_all, fvs_all)
-    print('done with t-SNE 3D')
-
-    visualize_lda_3d(pcds_all, fvs_all)
-    print('done with LDA 3D')
-
-    # visualize_features_multiprocessing(pcds_all, fvs_all)
+    visualize_features_multiprocessing(pcds_all, fvs_all)
 
 
 if __name__ == '__main__':

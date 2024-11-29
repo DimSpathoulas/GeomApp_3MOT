@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import torch
 from functions.outer_funcs import create_box_annotations, format_sample_result
-from fused import TrackerNN
+from mmot_mot_3d import TrackerNN
 from nuscenes import NuScenes
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
@@ -83,7 +83,7 @@ def project_to_svd_space(features, svd_matrices, mean_vectors, std_vectors, trac
         np.ndarray: Projected features of shape (num_samples, 512, 3, 3)
     """
     features = np.array(features)
-    top_features = 64
+    top_features = 8
     projected_features = np.zeros((features.shape[0], top_features, features.shape[2], features.shape[3]))
     
     for i in range(3):
@@ -117,25 +117,28 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer_025.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer_025.pkl",
                         help='Path to detections, train split for train - val split for inference')
-    parser.add_argument('--svd', type=str,
-                    default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_spatial.pkl",
+    parser.add_argument('--svd_lidar', type=str,
+                    default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_spatial_6433.pkl",
                     help='SVD matrices for lower representation')
+    parser.add_argument('--svd_cam', type=str,
+                default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
+                help='SVD matrices for lower representation')
     
     parser.add_argument('--state', type=str, default=1,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='svd_matrices_spatial64.pth',
+    parser.add_argument('--load_model_state', type=str, default='svd_matrices_spatial64_to_8.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='svd_matrices_spatial64_cos_class.pth',
+    parser.add_argument('--save_model_state', type=str, default='svd_matrices_spatial64_to_8.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='svd_matrices_spatial64_cos_class.json',
+    parser.add_argument('--output_path', type=str, default='svd_matrices_spatial64_to_8.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -160,8 +163,8 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    # if state > 0:
-    #     Tracker = load_tracker_states(Tracker, load_model_state)
+    if state > 0:
+        Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
         params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G2.parameters())
@@ -203,12 +206,20 @@ def track_nuscenes():
     with open(dets_train, 'rb') as f:
         all_results = pickle.load(f)
 
-    with open(args.svd, 'rb') as f:
+    with open(args.svd_lidar, 'rb') as f:
         svd_data = pickle.load(f)
+
+    with open(args.svd_cam, 'rb') as f:
+        svd_data_cam = pickle.load(f)
+
 
     svd_matrices = svd_data['svd_matrices']
     mean_vectors = svd_data['mean_vectors']
     std_vectors = svd_data['std_vectors']
+
+    svd_matrices_cam = svd_data_cam['svd_matrices']
+    mean_vectors_cam = svd_data_cam['mean_vectors']
+    std_vectors_cam = svd_data_cam['std_vectors']
 
     nusc = NuScenes(version=version, dataroot=data_root, verbose=True)
 
@@ -306,20 +317,20 @@ def track_nuscenes():
                     std_vectors,
                     name)           
 
-                #     mean_vector = mean_vectors[name]
-                #     std_vector = std_vectors[name]
-                #     projection_matrix = svd_matrices[name]
+                    mean_vector = mean_vectors_cam[name]
+                    std_vector = std_vectors_cam[name]
+                    projection_matrix = svd_matrices_cam[name]
 
-                #     features = np.array([feature.flatten() for feature in pcbs[name]])  # Shape: (num_features, 4608)
+                    features = np.array([feature.flatten() for feature in fvecs[name]])  # Shape: (num_features, 4608)
 
-                #     # Mean-shift and normalize all features
-                #     normalized_features = (features - mean_vector) / std_vector  # Shape: (num_features, 4608)
+                    # Mean-shift and normalize all features
+                    normalized_features = (features - mean_vector) / std_vector  # Shape: (num_features, 4608)
 
-                #     # Project all features to lower dimensions
-                #     reduced_projection_matrix = projection_matrix[:576, :]
-                #     projected_features = np.dot(normalized_features, reduced_projection_matrix.T)
-                #     projected_features = projected_features.reshape(-1, 64, 3, 3)
-                #     pcbs[name] = projected_features
+                    # Project all features to lower dimensions
+                    reduced_projection_matrix = projection_matrix[:256, :]
+                    projected_features = np.dot(normalized_features, reduced_projection_matrix.T)
+                    # projected_features = projected_features.reshape(-1, 8, 3, 3)
+                    fvecs[name] = projected_features
 
                 dets_all = {tracking_name: {'dets': np.array(dets[tracking_name]),
                                             'pcbs': np.array(pcbs[tracking_name]),
@@ -334,8 +345,8 @@ def track_nuscenes():
                 total_frames += 1
                 start_time = time.time()
 
-                # optimizer.zero_grad()
-                # sample_loss = None
+                optimizer.zero_grad()
+                sample_loss = None
                 
                 # train
                 cs = 0.0
@@ -344,22 +355,22 @@ def track_nuscenes():
                         if dets_all[tracking_name]['dets'].shape[0] > 0:
                             
                             cs = 1.0 + cs
-                            optimizer.zero_grad()
+                            # optimizer.zero_grad()
                             trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
 
-                            if loss is not None:
-                                loss.backward()
-                                torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
-                                optimizer.step()
-
                             # if loss is not None:
-                            #     # if scene_loss is None:
-                            #     if sample_loss is None:  
-                            #         sample_loss = loss
-                            #         # scene_loss = loss
-                            #     else:
-                            #         sample_loss = sample_loss + loss
-                            #         # scene_loss = scene_loss + loss
+                            #     loss.backward()
+                            #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
+                            #     optimizer.step()
+
+                            if loss is not None:
+                                # if scene_loss is None:
+                                if sample_loss is None:  
+                                    sample_loss = loss
+                                    # scene_loss = loss
+                                else:
+                                    sample_loss = sample_loss + loss
+                                    # scene_loss = scene_loss + loss
 
                 # val
                 if epoch == EPOCHS - 1 and state > 0:
@@ -380,12 +391,12 @@ def track_nuscenes():
                 cycle_time = time.time() - start_time
                 total_time += cycle_time
 
-                # if epoch < EPOCHS - 1 and sample_loss is not None:
-                #     sample_loss.div(cs)
-                #     cs = 0
-                #     sample_loss.backward()
-                #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
-                #     optimizer.step()
+                if epoch < EPOCHS - 1 and sample_loss is not None:
+                    sample_loss.div(cs)
+                    cs = 0
+                    sample_loss.backward()
+                    torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
+                    optimizer.step()
                     # epoch_loss = epoch_loss + sample_loss.detach()
 
                 # prev_ground_truths = copy.deepcopy(current_ground_truths)

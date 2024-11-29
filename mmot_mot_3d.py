@@ -100,35 +100,37 @@ class TrackerNN(nn.Module):
 
         # Neural network components - INITIALIZED ONCE
         self.G1 = nn.Sequential(
-            nn.Linear(1024 + 6, 1536),
+            nn.Linear(256 + 6, 128),
             nn.ReLU(),
             nn.Dropout(0.1),
-            nn.Linear(1536, 576),
+            nn.Linear(128, 72),
+            nn.ReLU(),
             # nn.Dropout(0.1),
-            # nn.Linear(512, 4608)
+            # nn.Linear(128, 72),
+            # nn.ReLU()
         )
         
         self.G2 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Dropout(0.1),
-            nn.Linear(64, out_features=32),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(32, 1),
+            nn.Linear(in_features=8, out_features=1),
+            # nn.ReLU(),
+            # nn.Dropout(0.1),
+            # nn.Linear(4, 1),
             nn.Sigmoid()
         )
 
         self.G3 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=16, out_channels=8, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
             nn.Dropout(0.1),
-            nn.Linear(64, out_features=32),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(32, 2)
+            nn.Linear(in_features=8, out_features=2)
+            # nn.ReLU(),
+            # nn.Dropout(0.1),
+            # nn.Linear(4, 2)
         )
 
         self.G4 = nn.Sequential(
@@ -239,18 +241,16 @@ class TrackerNN(nn.Module):
 
         # cam_feats = cam_feats.reshape(cam_feats.shape[0],F3D.shape[1] , 3, 3)
         lidar_feats = F3D
+
         # # L2 normalize across spatial dimensions
         lidar_feats = torch.nn.functional.normalize(F3D.view(F3D.shape[0], -1), p=2, dim=1)
-        lidar_feats = lidar_feats.view(lidar_feats.shape[0], 64, 3, 3)
+        lidar_feats = lidar_feats.view(lidar_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
 
-        # cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
-        # cam_feats = cam_feats.view(cam_feats.shape[0], 64, 3, 3)
-        # print(F3D.shape)
-        # lidar_feats = torch.nn.functional.normalize(F3D.view(F3D.shape[0], -1), p=2, dim=1)
-        # lidar_feats = lidar_feats.view(lidar_feats.shape[0], 64, 3, 3)
+        cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
+        cam_feats = cam_feats.view(cam_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
         
         # Fuse the normalized features
-        # fused = cam_feats + lidar_feats
+        fused = cam_feats + lidar_feats
         
         # normalize the fused output again
         # fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
@@ -613,7 +613,7 @@ class TrackerNN(nn.Module):
                 warmup_factor = min(self.epoch  / 5, 1.0)
                 a = a * warmup_factor
 
-            D_module = D_mah + (a * ( (one - cos_met) - (point_five + b)))
+            D_module = D_mah + (a * ( (D_feat) - (point_five + b)))
 
         # IF WE TRAIN FOR D_FEAT
         # THERE IS NO VAL MODE IN STAGE 1 OF DC
