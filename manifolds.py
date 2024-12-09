@@ -23,7 +23,8 @@ NUSCENES_TRACKING_NAMES = [
     'motorcycle',
     'pedestrian',
     'trailer',
-    'truck'
+    'truck',
+    # 'false_detections'
 ]
 
 
@@ -31,7 +32,7 @@ def visualize_feature_distributions(name, pcds, fvs):
     # Visualize pcds feature distributions
 
     plt.figure(figsize=(12, 6))
-    sns.histplot(pcds[name].flatten(), kde=True)
+    sns.histplot(pcds.flatten(), kde=True)
     plt.title(f'Feature distribution of pcds for {name}')
     plt.savefig(f'features/distributions/pcds_distribution_{name}.png')  # Save the plot as a PNG file
     plt.close()  # Close the plot to free memory
@@ -39,7 +40,7 @@ def visualize_feature_distributions(name, pcds, fvs):
     # Visualize fvs feature distributions
 
     plt.figure(figsize=(12, 6))
-    sns.histplot(fvs[name].flatten(), kde=True)
+    sns.histplot(fvs.flatten(), kde=True)
     plt.title(f'Feature distribution of fvs for {name}')
     plt.savefig(f'features/distributions/fvs_distribution_{name}.png')  # Save the plot as a PNG file
     plt.close()  # Close the plot to free memory
@@ -112,9 +113,6 @@ def visualize_pca_3d(name, pcds_all, fvs_all):
 
 
 
-
-
-
 def visualize_umap(name, pcds_all, fvs_all):
     # Set parameters with cosine metric
     reducer = umap.UMAP(n_neighbors=15, min_dist=0.1, metric='cosine', n_components=2)
@@ -129,7 +127,7 @@ def visualize_umap(name, pcds_all, fvs_all):
     plt.close()
 
     # Fit and transform fvs
-    fvs_umap = reducer.fit_transform(fvs_all[name])
+    fvs_umap = reducer.fit_transform(fvs_all)
 
     plt.figure(figsize=(8, 6))
     plt.scatter(fvs_umap[:, 0], fvs_umap[:, 1], alpha=0.5, label='fvs')
@@ -139,10 +137,10 @@ def visualize_umap(name, pcds_all, fvs_all):
 
 
 def visualize_umap_3d(name, pcds_all, fvs_all):
-    reducer = umap.UMAP(n_components=3, n_neighbors=15, min_dist=0.1, metric='cosine')
+    reducer = umap.UMAP(n_components=3, n_neighbors=20, min_dist=0.1, metric='euclidean')
 
     pcds_umap = reducer.fit_transform(pcds_all)
-    fvs_umap = reducer.fit_transform(fvs_all[name])
+    fvs_umap = reducer.fit_transform(fvs_all)
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
@@ -203,7 +201,7 @@ def visualize_tsne_3d(name, pcds_all, fvs_all):
     tsne = TSNE(n_components=3, random_state=42)
 
     pcds_tsne = tsne.fit_transform(pcds_all)
-    fvs_tsne = tsne.fit_transform(fvs_all[name])
+    fvs_tsne = tsne.fit_transform(fvs_all)
 
     fig = plt.figure(figsize=(10, 8))
     ax = fig.add_subplot(111, projection='3d')
@@ -291,30 +289,27 @@ def visualize_lda_3d(pcds_all, fvs_all):
 
 
 def process_category(name, pcds, fvs):
-    visualize_feature_correlation(name, pcds, fvs)
-    # visualize_feature_distributions(name, pcds, fvs)
-    visualize_pca(name, pcds, fvs)
-    visualize_pca_3d(name, pcds, fvs)
-    visualize_umap(name, pcds, fvs)
+
+    # visualize_pca(name, pcds, fvs)
+    # visualize_pca_3d(name, pcds, fvs)
+
+    # visualize_umap(name, pcds, fvs)
     visualize_umap_3d(name, pcds, fvs)
-    visualize_tsne_3d(name, pcds, fvs)
-    visualize_lda_3d(name, pcds, fvs)
+    
+    # visualize_tsne_3d(name, pcds, fvs)
+
+
+
+    # visualize_lda_3d(name, pcds, fvs)
     # visualize_isomap_3d(pcds_all, fvs_all)
 
 
 def visualize_features_multiprocessing(pcds_all, fvs_all):
-    processes = []
+
     for name in NUSCENES_TRACKING_NAMES:
 
         pcds = pcds_all[name].reshape(len(pcds_all[name]), -1)
         process_category(name, pcds, fvs_all[name])
-
-    #     p = mp.Process(target=process_category, args=(name, pcds, fvs_all[name]))
-    #     processes.append(p)
-    #     p.start()
-
-    # for p in processes:
-    #     p.join()
 
 
 def create_box_annotations(sample_token,nusc):
@@ -373,16 +368,16 @@ def feature_analysis():
     data_root = args.data_root
     version = args.version
 
-    os.makedirs('features/distributions', exist_ok=True)
-    os.makedirs('features/statistics', exist_ok=True)
-    os.makedirs('features/correlation', exist_ok=True)
+    # os.makedirs('features/distributions', exist_ok=True)
+    # os.makedirs('features/statistics', exist_ok=True)
+    # os.makedirs('features/correlation', exist_ok=True)
     os.makedirs('features/pca', exist_ok=True)
-    os.makedirs('features/density', exist_ok=True)
+    # os.makedirs('features/density', exist_ok=True)
     os.makedirs('features/umap', exist_ok=True)
     os.makedirs('features/class_imbalance', exist_ok=True)
     os.makedirs('features/umap3d', exist_ok=True)
     os.makedirs('features/tsne', exist_ok=True)
-    os.makedirs('features/lda', exist_ok=True)
+    # os.makedirs('features/lda', exist_ok=True)
 
     pcds_all = {track_name: [] for track_name in NUSCENES_TRACKING_NAMES}
     fvs_all = {track_name: [] for track_name in NUSCENES_TRACKING_NAMES}

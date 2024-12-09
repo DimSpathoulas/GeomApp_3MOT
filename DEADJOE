@@ -1,0 +1,39 @@
+
+*** These modified files were found in JOE when it aborted on Sun Dec  8 15:01:48 2024
+*** JOE was aborted by UNIX signal 1
+
+*** File '/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/.git/COMMIT_EDITMSG'
+
+# Please enter the commit message for your changes. Lines starting
+# with '#' will be ignored, and an empty message aborts the commit.
+#
+# On branch main
+# Your branch is up to date with 'origin/main'.
+#
+# Changes to be committed:
+#	modified:   README.md
+#	new file:   all.py
+#	new file:   backbone.py
+#	modified:   main.py
+#	new file:   main_2.py
+#	modified:   manifolds.py
+#	modified:   mmot_mot_3d.py
+#	modified:   svd_per_point.py
+#	new file:   svd_umap.py
+#
+
+*** File '(Unnamed)'
+:q!
+
+*** File '(Unnamed)'
+/home/ktsiakas/.gitconfig
+* Build Log *
+/home/ktsiakas/.gitconfig
+/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/.git/MERGE_MSG
+/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/.git/COMMIT_EDITMSG
+
+*** File '* Startup Log *'
+Processing '/etc/joe/editorrc'...
+Processing '/etc/joe/ftyperc'...
+Finished processing /etc/joe/ftyperc
+Finished processing /etc/joe/editorrc

@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import torch
 from functions.outer_funcs import create_box_annotations, format_sample_result
-from mmot_mot_3d import TrackerNN
+from backbone import TrackerNN
 from nuscenes import NuScenes
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter
@@ -18,10 +18,10 @@ from tqdm import tqdm
 
 NUSCENES_TRACKING_NAMES = [
     # 'bicycle',
-    'bus',
+    # 'bus',
     'car',
     'motorcycle',
-    'pedestrian',
+    # 'pedestrian',
     'trailer',
     # 'truck'
 ]
@@ -39,29 +39,25 @@ def save_tracker_states(Tracker, save_path):
     """
     state_dict = {
         'G1': Tracker.G1.state_dict(),
-        'G2': Tracker.G2.state_dict(),
-        'G3': Tracker.G3.state_dict(),
         'G4': Tracker.G4.state_dict()
     }
     torch.save(state_dict, save_path)
-    print(f"Saved G1, G2, G3, G4 states to {save_path}")
+    print(f"Saved G1, G4 states to {save_path}")
 
 
 def load_tracker_states(Tracker, load_path):
     """
-    Load states of G1, G2, G3, and G4 into Tracker from a single file.
+    Load states of G1 and G4 into Tracker from a single file.
     
     Args:
-    Tracker: The Tracker object containing G1, G2, G3, and G4 models.
+    Tracker: The Tracker object containing G1 and G4 models.
     load_path (str): Path to load the model states from.
     """
     if os.path.exists(load_path):
         state_dict = torch.load(load_path)
         Tracker.G1.load_state_dict(state_dict['G1'])
-        Tracker.G2.load_state_dict(state_dict['G2'])
-        # Tracker.G3.load_state_dict(state_dict['G3'])
         Tracker.G4.load_state_dict(state_dict['G4'])
-        print(f"Loaded G1, G2, G3, G4 states from {load_path}")
+        print(f"Loaded G1, G4 states from {load_path}")
     else:
         print(f"No saved states found at {load_path}")
 
@@ -129,16 +125,14 @@ def track_nuscenes():
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
     
-    parser.add_argument('--state', type=str, default=1,
-                        help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='last_stand_no_mask.pth',
+    parser.add_argument('--load_model_state', type=str, default='g4_balanced_sampling_pcds_svd64.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='last_stand_no_mask_full_ab.pth',
+    parser.add_argument('--save_model_state', type=str, default='g4_balanced_sampling_pcds_svd64.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='last_stand_no_mask_full_ab.json',
+    parser.add_argument('--output_path', type=str, default='g4_balanced_sampling_pcds_svd64.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -152,7 +146,6 @@ def track_nuscenes():
     dets_val = args.dets_val
 
     # internal states of model
-    state = args.state
     training = args.training
 
     # load and save model DO THIS LATER
@@ -163,38 +156,15 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    if state > 0:
-        Tracker = load_tracker_states(Tracker, load_model_state)
+    # if state > 0:
+    #     Tracker = load_tracker_states(Tracker, load_model_state)
 
-    if state == 0:
-        params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G2.parameters())
-        optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
-        Tracker.G1.train()
-        Tracker.G2.train()
-        criterion = nn.BCELoss()
 
-    if state == 1:
-        params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G3.parameters())
-        Tracker.G2.eval()
-        for param in Tracker.G2.parameters():
-            param.requires_grad = False
-        optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
-        Tracker.G1.train()
-        Tracker.G3.train()
-        criterion = None
-
-    if state == 2:
-        params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G4.parameters())
-        Tracker.G2.eval()
-        for param in Tracker.G2.parameters():
-            param.requires_grad = False
-        Tracker.G3.eval()
-        for param in Tracker.G3.parameters():
-            param.requires_grad = False
-        optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
-        Tracker.G1.train()
-        Tracker.G4.train()
-        criterion = nn.BCELoss()
+    params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G4.parameters())
+    optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
+    Tracker.G1.train()
+    Tracker.G4.train()
+    criterion = nn.BCELoss(reduction='none')
 
     if training == True:
         EPOCHS = 11
@@ -244,12 +214,6 @@ def track_nuscenes():
             Tracker.G1.eval()
             for param in Tracker.G1.parameters():
                 param.requires_grad = False
-            Tracker.G2.eval()
-            for param in Tracker.G2.parameters():
-                param.requires_grad = False
-            Tracker.G3.eval()
-            for param in Tracker.G3.parameters():
-                param.requires_grad = False
             Tracker.G4.eval()
             for param in Tracker.G4.parameters():
                 param.requires_grad = False
@@ -267,7 +231,7 @@ def track_nuscenes():
             current_sample_token = first_sample_token
 
             for tracking_name in NUSCENES_TRACKING_NAMES:
-                Tracker.reinit_ab3dmot(tracking_name=tracking_name, training=training, state=state, criterion=criterion, epoch=epoch)
+                Tracker.reinit_ab3dmot(tracking_name=tracking_name, training=training, criterion=criterion, epoch=epoch)
 
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
@@ -305,17 +269,17 @@ def track_nuscenes():
                             cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
                             info[name].append(dets_outputs['pred_score'])
 
-                # # projection
-                # for name in NUSCENES_TRACKING_NAMES:
-                #     if len(pcbs[name]) == 0:
-                #         continue
+                # projection
+                for name in NUSCENES_TRACKING_NAMES:
+                    if len(pcbs[name]) == 0:
+                        continue
 
-                #     pcbs[name] = project_to_svd_space(
-                #     pcbs[name],
-                #     svd_matrices,
-                #     mean_vectors,
-                #     std_vectors,
-                #     name)           
+                    pcbs[name] = project_to_svd_space(
+                    pcbs[name],
+                    svd_matrices,
+                    mean_vectors,
+                    std_vectors,
+                    name)           
 
                 #     mean_vector = mean_vectors_cam[name]
                 #     std_vector = std_vectors_cam[name]
@@ -327,7 +291,7 @@ def track_nuscenes():
                 #     normalized_features = (features - mean_vector) / std_vector  # Shape: (num_features, 4608)
 
                 #     # Project all features to lower dimensions
-                #     reduced_projection_matrix = projection_matrix[:256, :]
+                #     reduced_projection_matrix = projection_matrix[:128, :]
                 #     projected_features = np.dot(normalized_features, reduced_projection_matrix.T)
                 #     # projected_features = projected_features.reshape(-1, 8, 3, 3)
                 #     fvecs[name] = projected_features
@@ -357,6 +321,7 @@ def track_nuscenes():
                             cs = 1.0 + cs
                             # optimizer.zero_grad()
                             trackers, loss = Tracker.forward(dets_all[tracking_name], tracking_name)
+
                             # if loss is not None:
                             #     loss.backward()
                             #     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
@@ -372,7 +337,7 @@ def track_nuscenes():
                                     # scene_loss = scene_loss + loss
 
                 # val
-                if epoch == EPOCHS - 1 and state > 0:
+                if epoch == EPOCHS - 1:
 
                     for tracking_name in NUSCENES_TRACKING_NAMES:
                         if dets_all[tracking_name]['dets'].shape[0] > 0:
@@ -460,21 +425,19 @@ def track_nuscenes():
     # # save tracking results after inference
     save_tracker_states(Tracker, save_model_state)
 
-    if state > 0:
+    meta = {
+        "use_camera": True,
+        "use_lidar": True,
+        "use_radar": False,
+        "use_map": False,
+        "use_external": False
+    }
 
-        meta = {
-            "use_camera": True,
-            "use_lidar": True,
-            "use_radar": False,
-            "use_map": False,
-            "use_external": False
-        }
+    output_data = {'meta': meta, 'results': results}
+    with open(output_path, 'w') as outfile:
+        json.dump(output_data, outfile)
 
-        output_data = {'meta': meta, 'results': results}
-        with open(output_path, 'w') as outfile:
-            json.dump(output_data, outfile)
-
-        print('results .json saved as', output_path)
+    print('results .json saved as', output_path)
 
 if __name__ == '__main__':
     print('SOMETHING CATCHY')

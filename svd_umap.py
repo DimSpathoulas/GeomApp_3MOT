@@ -5,6 +5,24 @@ import argparse
 from nuscenes import NuScenes
 import numpy as np
 import torch
+import umap
+from tqdm import tqdm
+import os.path
+from itertools import product
+import pickle
+import argparse
+from nuscenes import NuScenes
+import matplotlib.pyplot as plt
+from sklearn.neighbors import KernelDensity
+from sklearn.decomposition import PCA
+import umap
+import numpy as np
+import multiprocessing as mp
+import seaborn as sns
+from sklearn.preprocessing import LabelEncoder
+from sklearn.manifold import TSNE, Isomap
+from scipy.sparse import lil_matrix
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 
 NUSCENES_TRACKING_NAMES = [
     'bicycle',
@@ -96,10 +114,8 @@ def svd():
         processed_scene_tokens.add(scene_token)
 
     
-    svd_matrices = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-    mean_vectors = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-    std_vectors = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
-    
+    os.makedirs('svd_umap/umap3d', exist_ok=True)
+    reducer = umap.UMAP(n_components=3, n_neighbors=15, min_dist=0.1, metric='cosine')
     # Perform SVD for each tracking name
     for name in NUSCENES_TRACKING_NAMES:
         if len(pcds_all[name]) == 0:
@@ -108,48 +124,45 @@ def svd():
         # Stack the features (shape: (num_samples, 512, 3, 3))
         pcds_all[name] = np.vstack(pcds_all[name])
 
-        # Initialize dictionaries to store SVD results per grid position
-        svd_matrices[name] = {}  # Store projection matrices per grid position
-        mean_vectors[name] = {}
-        std_vectors[name] = {}
+        top_features = 64
+        projected_features = np.zeros((len(pcds_all[name]), top_features, 3, 3))
 
-        # Loop through each grid position in the 3x3 grid
-        for i in range(3):
-            for j in range(3):
-                # Extract features for this grid position (shape: (num_samples, 512))
-                grid_features = pcds_all[name][:, :, i, j]
+        for i, j in product(range(3), range(3)):
+            # Extract features for this grid position (shape: (num_samples, 512))
+            grid_features = pcds_all[name][:, :, i, j]
 
-                # Compute mean and std for normalization
-                mean_vector = np.mean(grid_features, axis=0)  # Shape: (512,)
-                std_vector = np.std(grid_features, axis=0)    # Shape: (512,)
-                std_vector[std_vector == 0] = 1e-8  # Avoid division by zero
+            # Compute mean and std for normalization
+            mean_vector = np.mean(grid_features, axis=0)  # Shape: (512,)
+            std_vector = np.std(grid_features, axis=0)    # Shape: (512,)
+            std_vector[std_vector == 0] = 1e-8  # Avoid division by zero
 
-                # Mean shift and normalize
-                normalized_features = (grid_features - mean_vector) / std_vector  # Shape: (num_samples, 512)
+            # Mean shift and normalize
+            normalized_features = (grid_features - mean_vector) / std_vector  # Shape: (num_samples, 512)
 
-                # Convert to tensor for SVD
-                normalized_tensor = torch.tensor(normalized_features, dtype=torch.float32)
+            # Convert to tensor for SVD
+            normalized_tensor = torch.tensor(normalized_features, dtype=torch.float32)
 
-                # Run SVD
-                print(f"Running SVD for {name}, grid position ({i}, {j})...")
-                U, S, Vh = torch.linalg.svd(normalized_tensor, full_matrices=False)
+            # Run SVD
+            print(f"Running SVD for {name}, grid position ({i}, {j})...")
+            U, S, Vh = torch.linalg.svd(normalized_tensor, full_matrices=False)
 
-                # Save the results for this grid position
-                svd_matrices[name][(i, j)] = Vh.cpu().numpy()  # Projection matrix (shape: 512x512)
-                mean_vectors[name][(i, j)] = mean_vector
-                std_vectors[name][(i, j)] = std_vector
+            # Project using SVD
+            reduced_projection_matrix = Vh[:top_features, :]
+            projected_grid_features = np.dot(normalized_features, reduced_projection_matrix.T)
 
-        print(f"Completed SVD for {name}.")
+            projected_features[:, :, i, j] = projected_grid_features
 
-    # Save the SVD matrices, mean vectors, and std vectors
-    with open(args.output_path, 'wb') as f:
-        pickle.dump({
-            'svd_matrices': svd_matrices,
-            'mean_vectors': mean_vectors,
-            'std_vectors': std_vectors
-        }, f)
 
-    print(f"Saved SVD projection matrices to {args.output_path}.")
+        pcds = projected_features.reshape(len(pcds_all[name]), -1)
+        pcds_umap = reducer.fit_transform(pcds)
+        print(pcds.shape, 'umap')
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111, projection='3d')
+        ax.scatter(pcds_umap[:, 0], pcds_umap[:, 1], pcds_umap[:, 2], alpha=0.6)
+        ax.set_title(f'3D UMAP of pcds for {name}')
+        plt.savefig(f'svd_umap/umap3d/umap_3d_pcds_{name}.png')
+        plt.close()
+
 
 if __name__ == "__main__":
     svd()
