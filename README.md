@@ -5,10 +5,12 @@ This is the main module.
 
 python cov_calc_cent_orient_cor.py > cov_calc_cent_orient_cor.txt
 
-python evaluate_nuscenes.py --output_dir results last_stand_g3_complet.json > results/last_stand_g3_complet.txt
+python evaluate_nuscenes.py --output_dir results g4_complete3.json > results/baseline_interpolated_thresh.txt
 
 
 val_conv_layer_025.pkl
+
+val_conv_layer51233_thr057_interpolated
 
 train_conv_layer6455_thr034
 val_conv_layer6455_thr034

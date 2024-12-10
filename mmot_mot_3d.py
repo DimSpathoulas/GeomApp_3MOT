@@ -36,13 +36,15 @@ class FocalLoss(nn.Module):
         loss_s = loss.sum()
         return loss_s
         
+
 class FocalLoss_g4(nn.Module):
-    def __init__(self, gamma=2.0, reduction='none'):
-        super(FocalLoss, self).__init__()
+    def __init__(self, alpha=1.0, gamma=2.0, reduction='none'):
+        super(FocalLoss_g4, self).__init__()
+        self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
 
-    def forward(self, inputs, targets, alpha=None):
+    def forward(self, inputs, targets):
         # Compute binary cross-entropy loss
         bce_loss = F.binary_cross_entropy(inputs, targets, reduction=self.reduction)
         
@@ -50,14 +52,10 @@ class FocalLoss_g4(nn.Module):
         pt = torch.where(targets == 1, inputs, 1 - inputs)
         
         # Apply focal loss scaling factor
-        loss = (1 - pt) ** self.gamma * bce_loss
-        
-        # Apply class weighting if provided
-        if alpha is not None:
-            alpha_t = torch.where(targets == 1, alpha[1], alpha[0])
-            loss *= alpha_t
+        loss = ( self.alpha * ( (1 - pt) ** self.gamma ) )* bce_loss
         
         loss_s = loss.sum()
+        # print(loss_s)
         return loss_s
     
 
@@ -355,8 +353,23 @@ class TrackerNN(nn.Module):
             neg_distances = distance_matrix[neg_indices[0], neg_indices[1]]
             # print(distance_matrix, '\n', 'pos', '\n', pos_distances, 'neg', '\n', neg_distances, '\n\n\n\n\n\n')
 
-            # if pos and neg:
-            #     L_contr = torch.clamp(C_contr - (pos_distances.unsqueeze(1) - neg_distances.unsqueeze(0)), min=0).mean()
+            if pos and neg:
+                L_contr = (
+                        torch.clamp(C_contr - (pos_distances.unsqueeze(1) - neg_distances.unsqueeze(0)), min=0).sum() / (len(pos) * len(neg))
+                    )
+                
+                # # Calculate raw loss for contrastive pairs
+                # raw_contr_loss = torch.clamp(C_contr - (pos_distances.unsqueeze(1) - neg_distances.unsqueeze(0)), min=0)
+
+                # # Dynamic scaling using mean magnitudes of positive and negative distances
+                # pos_magnitude = pos_distances.mean().detach()  # Prevent gradients from flowing into the scaling
+                # neg_magnitude = neg_distances.mean().detach()
+
+                # # Weighted normalization factor
+                # scaling_factor = pos_magnitude + neg_magnitude + 1e-6  # Avoid division by zero
+
+                # # Compute normalized contrastive loss
+                # L_contr = (raw_contr_loss.mean() / scaling_factor).detach()
 
             L_pos = torch.clamp(C_pos - (T - pos_distances), min=0).mean() if pos else torch.tensor(0., device=device)
             L_neg = torch.clamp(C_neg - (neg_distances - T), min=0).mean() if neg else torch.tensor(0., device=device)
@@ -591,12 +604,14 @@ class TrackerNN(nn.Module):
                         tracking_state['features'].append(det_feats[idx].detach())
 
                 if curr_gts.shape[0] != 0  and self.training == True:
+
+                    unmatched = torch.tensor(unmatched_dets).to(device)
                     C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
-                    num_ones = C.sum()
-                    num_zeros = C.numel() - num_ones
-                    alpha = torch.tensor([num_zeros / (num_ones + num_zeros), num_ones / (num_ones + num_zeros)], device=C.device)
-                    focal_loss = FocalLoss_g4(gamma=2.0)
-                    loss = focal_loss(P[unmatched_dets], C, alpha=alpha)
+                    n_matches= max((curr_gts == 1).sum(), 1) 
+                    n_non_matches = max((curr_gts == 0).sum(), 1)
+                    pos_weight = (n_matches/ n_non_matches).item()
+                    focal_loss = FocalLoss_g4(alpha=pos_weight, gamma=2.0)
+                    loss = focal_loss(P[unmatched], C)
         
         # meaning if val
         else:

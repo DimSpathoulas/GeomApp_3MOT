@@ -10,9 +10,30 @@ from functions.Kalman_Filter import KalmanBoxTracker
 from functions.inner_funcs import greedy_match, mahalanobis_distance, associate_detections_to_trackers
 from itertools import product
 import torch.nn.init as init
+import torch.nn.functional as F
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+class FocalLoss_g4(nn.Module):
+    def __init__(self, alpha=1.0, gamma=2.0, reduction='none'):
+        super(FocalLoss_g4, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.reduction = reduction
+
+    def forward(self, inputs, targets):
+        # Compute binary cross-entropy loss
+        bce_loss = F.binary_cross_entropy(inputs, targets, reduction=self.reduction)
+        
+        # Compute pt (predicted probability for true class)
+        pt = torch.where(targets == 1, inputs, 1 - inputs)
+        
+        # Apply focal loss scaling factor
+        loss = ( self.alpha * ( (1 - pt) ** self.gamma ) )* bce_loss
+        
+        loss_s = loss.sum()
+        # print(loss_s)
+        return loss_s
 
 class TrackerNN(nn.Module):
     def __init__(self):
@@ -58,16 +79,16 @@ class TrackerNN(nn.Module):
         # )
 
         self.G4 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=64, kernel_size=3, padding=0, stride=1),
+            nn.Conv2d(in_channels=512, out_channels=256, kernel_size=3, padding=0, stride=1),
             nn.ReLU(),
             nn.Flatten(),
+            nn.Linear(in_features=256, out_features=64),
+            nn.ReLU(),
             nn.Linear(64, 1),
-            # nn.ReLU(),
-            # nn.Linear(32, 1),
             nn.Sigmoid()
         )
         # WEIGHT INIT
-        self.apply(self.initialize_weights)
+        # self.apply(self.initialize_weights)
 
         # INIT STATES - WILL BE CLEARED AFTER EACH SCENE
         self.tracking_states = {}
@@ -81,7 +102,7 @@ class TrackerNN(nn.Module):
         elif isinstance(m, nn.Linear):
             init.xavier_uniform_(m.weight, gain=1.0)
             if m.bias is not None:
-                init.constant_(m.bias, 2.0)  # Bias close to 1 after sigmoid
+                init.constant_(m.bias, 1.0)  # Bias close to 1 after sigmoid
 
     # SUB-FORWARDS
     def feature_fusion(self, F2D, F3D, cam_onehot_vector):
@@ -110,7 +131,7 @@ class TrackerNN(nn.Module):
 
         y = self.G4(x).float()
         
-        return y
+        return y + 0.1
 
 
     def clear_tracking_states(self):
@@ -253,30 +274,45 @@ class TrackerNN(nn.Module):
                 blended_feature = det_feats[d].detach() * gamma + trks_feats[t] * (1.0- gamma)
                 tracking_state['features'][t] = blended_feature.squeeze(0)
 
+
+
+
+
+        # for i in unmatched_dets:  # a scalar of index
+        #     detection_score = info[i][-1]
+        #     track_score = detection_score
+        #     trk = KalmanBoxTracker(dets[i, :], info[i, :], track_score, tracking_name)
+        #     tracking_state['trackers'].append(trk)
+        #     tracking_state['features'].append(det_feats[i].detach())
+
+
+
         if unmatched_dets.shape[0] > 0:
             P = torch.zeros(dets.shape[0], 1, device=device)
             unmatched_feats = det_feats[unmatched_dets]
             P[unmatched_dets] = self.track_initialization(unmatched_feats)
-            print(P[unmatched_dets])
-            ins = 0
+            # if curr_gts.shape[0] != 0:
+            #     C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
+            #     print(P[unmatched_dets], C)
             for idx in unmatched_dets:
                 if P[idx] > tracking_state['track_init_thresh']:
-                    ins = 1
+
                     new_track = KalmanBoxTracker(dets[idx], info[idx], info[idx, -1], tracking_name)
                     tracking_state['trackers'].append(new_track)
                     tracking_state['features'].append(det_feats[idx].detach())
 
-            if curr_gts.shape[0] != 0  and self.training == True and ins == 1:
+            if curr_gts.shape[0] != 0  and self.training == True:
                 # Sample balanced positives and negatives
                 unmatched = torch.tensor(unmatched_dets).to(device)
 
-                ## AUTO MPOREI NA THEOREI TRUE KAI DYO DETECTIONS AN EINAI KONTA STO IDIO GROUNDTRUTH
-                # PREPEI NA VAZO TO CURR_GTS ME TO PIO KONTINO KAI META NA TO DIAGRAFO
-
-                # WEIGHT PARAPANO TA SPANIA KALA.... H EAN DEN YPARXEI OYTE ENA KALO STON P TOTE PROXORA KATEYTHEIAN
                 C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
-                loss = self.criterion(P[unmatched], C)
-                # print(loss, P[unmatched])
+                n_matches= max((C == 1).sum(), 1) 
+                n_non_matches = max((C == 0).sum(), 1)
+                # pos_weight = ( n_non_matches/n_matches ).item()
+                focal_loss = FocalLoss_g4( gamma=2.0)
+                loss = focal_loss(P[unmatched], C)
+
+
 
 
         # TRACK MANAGEMENT

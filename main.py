@@ -17,13 +17,13 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 NUSCENES_TRACKING_NAMES = [
-    # 'bicycle',
+    'bicycle',
     'bus',
     'car',
     'motorcycle',
     'pedestrian',
     'trailer',
-    # 'truck'
+    'truck'
 ]
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -59,7 +59,7 @@ def load_tracker_states(Tracker, load_path):
         state_dict = torch.load(load_path)
         Tracker.G1.load_state_dict(state_dict['G1'])
         Tracker.G2.load_state_dict(state_dict['G2'])
-        # Tracker.G3.load_state_dict(state_dict['G3'])
+        Tracker.G3.load_state_dict(state_dict['G3'])
         Tracker.G4.load_state_dict(state_dict['G4'])
         print(f"Loaded G1, G2, G3, G4 states from {load_path}")
     else:
@@ -117,10 +117,10 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--svd_lidar', type=str,
                     default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_spatial_51233.pkl",
@@ -129,16 +129,16 @@ def track_nuscenes():
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
     
-    parser.add_argument('--state', type=str, default=1,
+    parser.add_argument('--state', type=str, default=0,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='last_stand_no_mask.pth',
+    parser.add_argument('--load_model_state', type=str, default='interpolated_g2.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='last_stand_no_mask_full_ab.pth',
+    parser.add_argument('--save_model_state', type=str, default='interpolated_g2.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='last_stand_no_mask_full_ab.json',
+    parser.add_argument('--output_path', type=str, default='interpolated_g2.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -298,12 +298,39 @@ def track_nuscenes():
 
                 for i, item in enumerate(all_results[current_sample_token]):
                     for name in NUSCENES_TRACKING_NAMES:
+                        used_gt_indices = set()
                         for dets_outputs in item[name]:
                             dets[name].append(dets_outputs['box'])
                             pcbs[name].append(dets_outputs['point_cloud_features'])
                             fvecs[name].append(dets_outputs['feature_vector'])
                             cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
                             info[name].append(dets_outputs['pred_score'])
+
+                            # det_coords = np.array(dets_outputs['box'][:2])
+
+                            # # Find the closest unmatched ground truth
+                            # closest_gt_index = None
+                            # min_distance = float('inf')
+
+                            # for gt_idx, gt in enumerate(current_ground_truths[name]):
+                            #     if gt_idx in used_gt_indices:  # Skip already used ground truths
+                            #         continue
+
+                            #     gt_coords = np.array(gt[:2], dtype=float)
+                            #     distance = np.linalg.norm(det_coords - gt_coords)
+
+                            #     if distance < 2.0 and distance < min_distance:
+                            #         closest_gt_index = gt_idx
+                            #         min_distance = distance
+
+                            # # If a match is found, lock the ground truth and process
+                            # if closest_gt_index is not None:
+                            #     used_gt_indices.add(closest_gt_index)  # Mark this ground truth as used
+                            #     dets[name].append(dets_outputs['box'])
+                            #     pcbs[name].append(dets_outputs['point_cloud_features'])
+                            #     fvecs[name].append(dets_outputs['feature_vector'])
+                            #     cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
+                            #     info[name].append(dets_outputs['pred_score'])
 
                 # # projection
                 # for name in NUSCENES_TRACKING_NAMES:
