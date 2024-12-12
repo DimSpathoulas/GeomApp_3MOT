@@ -5,7 +5,7 @@ This is the main module.
 
 python cov_calc_cent_orient_cor.py > cov_calc_cent_orient_cor.txt
 
-python evaluate_nuscenes.py --output_dir results g4_complete3.json > results/baseline_interpolated_thresh.txt
+python evaluate_nuscenes.py --output_dir results g4_train_nonmat_div_mat_margin025_2.json > results/g4_train_nonmat_div_mat_margin025_2.txt
 
 
 val_conv_layer_025.pkl

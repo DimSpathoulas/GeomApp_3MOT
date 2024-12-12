@@ -123,7 +123,7 @@ class TrackerNN(nn.Module):
             nn.Flatten(),
             nn.Linear(in_features=256, out_features=128),
             nn.ReLU(),
-            nn.Linear(128, 1),
+            nn.Linear(128, 2),
         )
 
         self.G4 = nn.Sequential(
@@ -192,23 +192,23 @@ class TrackerNN(nn.Module):
         return x_trans.reshape(ds, ts)
 
     def distance_combination_stage_2(self, x):
-        # if x.shape[1] == 0:
-        #     return torch.empty(0, 0).to(device=device), torch.empty(0, 0).to(device=device)
         if x.shape[1] == 0:
-            return torch.empty(0, 0).to(device=device)
+            return torch.empty(0, 0).to(device=device), torch.empty(0, 0).to(device=device)
+        # if x.shape[1] == 0:
+        #     return torch.empty(0, 0).to(device=device)
         
         ds, ts, channels, height, width = x.shape
         x_reshaped = x.reshape(-1, channels, height, width).float()
         result = self.G3(x_reshaped)
 
-        # result_reshaped = result.reshape(ds, ts, -1)
-        # a = result_reshaped[:, :, 0]
-        # b = result_reshaped[:, :, 1]
-        # b = self.bactiv(b)
+        result_reshaped = result.reshape(ds, ts, -1)
+        a = result_reshaped[:, :, 0]
+        b = result_reshaped[:, :, 1]
+        b = self.bactiv(b)
 
-        # return a, b
+        return a, b
     
-        return result.reshape(ds, ts)
+        # return result.reshape(ds, ts)
     
 
     def track_initialization(self, x):
@@ -230,7 +230,7 @@ class TrackerNN(nn.Module):
             'min_hits': min_hits,
             'trackers': [],
             'frame_count': 0,
-            'mahanalobis_thresh': 11 , #  0.80
+            'mahanalobis_thresh': 0.80 , #  11
             'track_init_thresh':0.5 ,
             'features': [],
             'order': [0, 1, 2, 6, 3, 4, 5],  # x, y, z, rot_z, l, w, h
@@ -352,9 +352,8 @@ class TrackerNN(nn.Module):
                         torch.clamp(C_contr - (pos_distances.unsqueeze(1) - neg_distances.unsqueeze(0)), min=0).sum() # / (len(pos) * len(neg))
                     )
 
-            # / len(neg) / len(pos)
-            L_pos = ((torch.clamp(C_pos - (T - pos_distances), min=0).sum())  ) if pos else torch.tensor(0., device=device)
-            L_neg = ((torch.clamp(C_neg - (neg_distances - T), min=0).sum())  ) if neg else torch.tensor(0., device=device)
+            L_pos = ((torch.clamp(C_pos - (T - pos_distances), min=0).sum()) / len(pos) ) if pos else torch.tensor(0., device=device)
+            L_neg = ((torch.clamp(C_neg - (neg_distances - T), min=0).sum()) / len(neg) ) if neg else torch.tensor(0., device=device)
 
         else:
             return None
@@ -507,36 +506,7 @@ class TrackerNN(nn.Module):
         D_feat = self.distance_combination_stage_1(feature_map)
         D = D_feat.detach().cpu().numpy() 
         # print(D_mah, D_feat)
-        # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
-        # # print(cos_met)
-
-        # DISTANCE COMBINATION STAGE 2
-        # IF STATE == 1 THEN USE DCS2 ONLY
-        # IF STATE == 2 WE USE TRACK_INIT BUT (INHERINTENLY) IT NEEDS DCS2
-        if self.state >= 1:
-
-            a = self.distance_combination_stage_2(feature_map)
-            # if self.training == True:
-            #     warmup_factor = min(self.epoch / 3, 1.0)
-            #     a = a * warmup_factor
-
-            # D_module = D_mah/11.0 + ( (a + 5.0)* ( (D_feat) - (0.5 + b)))
-            # D_module = D_mah/11.0 - (1.0 - D_feat)
-            D_module = D_mah + a * (D_feat - 0.5)
-            # D_module = D_mah + 10.0 * D_feat
-            # D_module = (a + point_five ) * D_mah + ((b + point_five) * (D_feat))
-
-
-        # IF WE TRAIN FOR D_FEAT
-        # THERE IS NO VAL MODE IN STAGE 1 OF DC
-        if self.training == True and self.state == 0:
-            K, mask = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
-                                            prev_gts=prev_gts, epoch=self.epoch)  
-            if K.shape[0] > 0:
-                # print(cos_met, K, mask)
-                loss = self.compute_masked_focal_loss(D_feat, K, mask)
-
-            D = mah_dist
+        D_module =  torch.clamp(D_mah/22.0, max=1.0) + D_feat
 
 
         # IF TRAIN AND WE TRAIN FOR COMBINATION STAGE 2
@@ -550,10 +520,8 @@ class TrackerNN(nn.Module):
 
             D = D_module.detach().cpu().numpy()  
 
-
-
         # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
-        if self.training == False : # or self.state >= 2
+        if self.training == False or self.state >= 2:
             D = D_module.cpu().numpy()  
 
         # GREEDY MATCH

@@ -113,7 +113,7 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/train_conv_layer51233_thr057_interpolated.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
@@ -128,11 +128,11 @@ def track_nuscenes():
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='g4_interpolated.pth',
+    parser.add_argument('--load_model_state', type=str, default='g4_train_nonmat_div_mat_margin025_2.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='g4_interpolated.pth',
+    parser.add_argument('--save_model_state', type=str, default='g4_train_nonmat_div_mat_margin025_2.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='g4_interpolated.json',
+    parser.add_argument('--output_path', type=str, default='g4_train_nonmat_div_mat_margin025_2.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -158,7 +158,8 @@ def track_nuscenes():
 
     if not training:
         Tracker = load_tracker_states(Tracker, load_model_state)
-
+        
+    # Tracker = load_tracker_states(Tracker, load_model_state)
 
     params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G4.parameters())
     optimizer = torch.optim.Adam(params_to_optimize, lr=0.001)
@@ -269,6 +270,13 @@ def track_nuscenes():
                             fvecs[name].append(dets_outputs['feature_vector'])
                             cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
                             info[name].append(dets_outputs['pred_score'])
+
+                            # if dets_outputs['pred_score'] > 0.65:
+                            #     dets[name].append(dets_outputs['box'])
+                            #     pcbs[name].append(dets_outputs['point_cloud_features'])
+                            #     fvecs[name].append(dets_outputs['feature_vector'])
+                            #     cam_vecs[name].append(dets_outputs['camera_onehot_vector'])
+                            #     info[name].append(dets_outputs['pred_score'])
 
 
                             # det_coords = np.array(dets_outputs['box'][:2])

@@ -59,7 +59,7 @@ def load_tracker_states(Tracker, load_path):
         state_dict = torch.load(load_path)
         Tracker.G1.load_state_dict(state_dict['G1'])
         Tracker.G2.load_state_dict(state_dict['G2'])
-        Tracker.G3.load_state_dict(state_dict['G3'])
+        # Tracker.G3.load_state_dict(state_dict['G3'])
         Tracker.G4.load_state_dict(state_dict['G4'])
         print(f"Loaded G1, G2, G3, G4 states from {load_path}")
     else:
@@ -117,7 +117,7 @@ def track_nuscenes():
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval',
                         help='Root directory of the NuScenes dataset')
     parser.add_argument('--dets_train', type=str,
-                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
+                        default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/train_conv_layer51233_thr057_interpolated.pkl",
                         help='Path to detections, train split for train - val split for inference')
     parser.add_argument('--dets_val', type=str,
                         default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/val_conv_layer51233_thr057_interpolated.pkl",
@@ -129,16 +129,16 @@ def track_nuscenes():
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
     
-    parser.add_argument('--state', type=str, default=0,
+    parser.add_argument('--state', type=str, default=1,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='interpolated_g2.pth',
+    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes.pth', # interpolated_g2
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='interpolated_g2.pth',
+    parser.add_argument('--save_model_state', type=str, default='real_train_g3_all_classes_only_a_dfeat_min05_no_norms.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='interpolated_g2.json',
+    parser.add_argument('--output_path', type=str, default='real_train_g3_all_classes_only_a_dfeat_min05_no_norms.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -238,6 +238,7 @@ def track_nuscenes():
 
         if epoch == EPOCHS - 1:
             training = False
+            print('Validation Run')
             with open(dets_val, 'rb') as f:
                 all_results = pickle.load(f)
 

@@ -23,6 +23,7 @@ class FocalLoss_g4(nn.Module):
 
     def forward(self, inputs, targets):
         # Compute binary cross-entropy loss
+        # print(inputs, targets)
         bce_loss = F.binary_cross_entropy(inputs, targets, reduction=self.reduction)
         
         # Compute pt (predicted probability for true class)
@@ -35,15 +36,54 @@ class FocalLoss_g4(nn.Module):
         # print(loss_s)
         return loss_s
 
+
+
+
+def compute_margin_loss(P, C, margin=0.25, lambda_margin=1):
+    """
+    Computes the margin loss to encourage a gap between positive and negative predictions.
+
+    Args:
+        P (torch.Tensor): Predicted probabilities (N x 1).
+        C (torch.Tensor): Corresponding ground truth labels (N x 1).
+        margin (float): Desired margin between positive and negative predictions.
+        lambda_margin (float): Weight for the margin loss term.
+
+    Returns:
+        torch.Tensor: Margin loss.
+    """
+    # Extract positive and negative indices
+    pos_indices = (C == 1).nonzero(as_tuple=True)[0]
+    neg_indices = (C == 0).nonzero(as_tuple=True)[0]
+
+    # Ensure we have valid positive and negative indices
+    if len(pos_indices) > 0 and len(neg_indices) > 0:
+        P_pos = P[pos_indices]  # Positive predictions (n_pos x 1)
+        P_neg = P[neg_indices]  # Negative predictions (n_neg x 1)
+
+        # Compute pairwise differences using broadcasting
+        diff = P_pos.unsqueeze(1) - P_neg.unsqueeze(0)  # (n_pos x n_neg)
+
+        # Compute margin loss
+        margin_loss = torch.clamp(margin - diff, min=0).sum()
+        return lambda_margin * margin_loss
+    else:
+        # No valid margin loss if only positives or negatives exist
+        return torch.tensor(0.0, device=P.device)
+
+
+
+
+
 class TrackerNN(nn.Module):
     def __init__(self):
         super(TrackerNN, self).__init__()
 
         # Neural network components - INITIALIZED ONCE
         self.G1 = nn.Sequential(
-            nn.Linear(1024 + 6, 256),
+            nn.Linear(1024 + 6, out_features=1536),
             nn.ReLU(),
-            nn.Linear(256, out_features=1152),
+            nn.Linear(1536, out_features=4 * 1152),
         )
 
         # self.G4 = nn.Sequential(
@@ -114,24 +154,24 @@ class TrackerNN(nn.Module):
         cam_feats = torch.cat((F2D, cam_onehot_vector), dim=1)
         cam_feats = self.G1(cam_feats)
 
-        # cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
-        # cam_feats = cam_feats.view(cam_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
+        cam_feats = torch.nn.functional.normalize(cam_feats.view(cam_feats.shape[0], -1), p=2, dim=1)
+        cam_feats = cam_feats.view(cam_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
         
         # Fuse the normalized features
-        # fused = cam_feats + lidar_feats
+        fused = cam_feats + lidar_feats
         
         # normalize the fused output again
-        # fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
-        # fused = fused.view(fused.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
+        fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
+        fused = fused.view(fused.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
 
-        return lidar_feats
+        return fused
     
 
     def track_initialization(self, x):
 
         y = self.G4(x).float()
         
-        return y + 0.1
+        return y
 
 
     def clear_tracking_states(self):
@@ -156,7 +196,7 @@ class TrackerNN(nn.Module):
         self.criterion = criterion
         self.epoch = epoch
 
-    def construct_C_matrix(self, estimates, truths, distance_threshold=1.0):
+    def construct_C_matrix(self, estimates, truths, distance_threshold=2.0):
         """
         Compute proximity scores between detections and ground truths.
         Returns 1 if detection is close to any ground truth, 0 otherwise.
@@ -181,6 +221,49 @@ class TrackerNN(nn.Module):
         
         # Convert to binary scores based on threshold
         C = (min_distances <= distance_threshold).float().unsqueeze(1)
+        
+        return C
+    
+
+    def construct_C_matrix_2(self, estimates, truths, distance_threshold=2.0):
+        """
+        Compute proximity scores between detections and ground truths.
+        Ensures each ground truth is used only once.
+        
+        Args:
+            estimates: detection coordinates [N, dim]
+            truths: ground truth coordinates [M, dim]
+            distance_threshold: maximum distance to consider a detection close to ground truth
+        
+        Returns:
+            torch.Tensor: Binary proximity scores [N, 1]
+        """
+        # Extract and convert xy coordinates
+        estimates_xy = torch.from_numpy(estimates[:, :2].astype(np.float32)).to(device=device)
+        truths_xy = torch.from_numpy(truths[:, :2].astype(np.float32)).to(device=device)
+        
+        # Compute pairwise distances between all detections and ground truths
+        distances = torch.norm(estimates_xy[:, None] - truths_xy, dim=2)
+        
+        # Initialize binary scores tensor
+        C = torch.zeros(estimates.shape[0], 1, dtype=torch.float32).to(device=device)
+        
+        # Track used ground truths
+        used_truths = set()
+        
+        # Find the closest detection for each ground truth
+        for i in range(len(truths)):
+            # Find valid detections close to this ground truth
+            valid_detections = torch.where(distances[:, i] <= distance_threshold)[0]
+            
+            if len(valid_detections) > 0:
+                # Find the closest detection
+                closest_detection_idx = valid_detections[torch.argmin(distances[valid_detections, i])]
+                
+                # Mark this detection as valid if the ground truth hasn't been used
+                if i not in used_truths:
+                    C[closest_detection_idx] = 1.0
+                    used_truths.add(i)
         
         return C
 
@@ -305,12 +388,14 @@ class TrackerNN(nn.Module):
                 # Sample balanced positives and negatives
                 unmatched = torch.tensor(unmatched_dets).to(device)
 
-                C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
+                C = self.construct_C_matrix_2(dets[unmatched_dets], curr_gts)
                 n_matches= max((C == 1).sum(), 1) 
                 n_non_matches = max((C == 0).sum(), 1)
-                # pos_weight = ( n_non_matches/n_matches ).item()
-                focal_loss = FocalLoss_g4( gamma=2.0)
+                pos_weight = ( n_non_matches/n_matches ).item()
+                focal_loss = FocalLoss_g4(pos_weight, gamma=2.0)
+                loss_mar = compute_margin_loss(P[unmatched], C)
                 loss = focal_loss(P[unmatched], C)
+                loss = loss + loss_mar
 
 
 
