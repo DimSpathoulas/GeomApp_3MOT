@@ -39,7 +39,7 @@ class FocalLoss_g4(nn.Module):
 
 
 
-def compute_margin_loss(P, C, margin=0.25, lambda_margin=1):
+def compute_margin_loss(P, C, margin=0.30, lambda_margin=1):
     """
     Computes the margin loss to encourage a gap between positive and negative predictions.
 
@@ -67,9 +67,14 @@ def compute_margin_loss(P, C, margin=0.25, lambda_margin=1):
         # Compute margin loss
         margin_loss = torch.clamp(margin - diff, min=0).sum()
         return lambda_margin * margin_loss
-    else:
-        # No valid margin loss if only positives or negatives exist
-        return torch.tensor(0.0, device=P.device)
+    
+    if len(pos_indices) > 0:
+        P_pos = P[pos_indices] 
+        C_pos = 0.65
+    
+    if len(neg_indices) > 0:
+        P_neg = P[neg_indices]
+        C_neg = 0.35
 
 
 
@@ -374,9 +379,12 @@ class TrackerNN(nn.Module):
             P = torch.zeros(dets.shape[0], 1, device=device)
             unmatched_feats = det_feats[unmatched_dets]
             P[unmatched_dets] = self.track_initialization(unmatched_feats)
+
             # if curr_gts.shape[0] != 0:
-            #     C = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
-            #     print(P[unmatched_dets], C)
+            #     C = self.construct_C_matrix_2(dets[unmatched_dets], curr_gts)
+            #     C1 = self.construct_C_matrix(dets[unmatched_dets], curr_gts)
+            #     print(P[unmatched_dets], C, C1)
+
             for idx in unmatched_dets:
                 if P[idx] > tracking_state['track_init_thresh']:
 
@@ -391,8 +399,8 @@ class TrackerNN(nn.Module):
                 C = self.construct_C_matrix_2(dets[unmatched_dets], curr_gts)
                 n_matches= max((C == 1).sum(), 1) 
                 n_non_matches = max((C == 0).sum(), 1)
-                pos_weight = ( n_non_matches/n_matches ).item()
-                focal_loss = FocalLoss_g4(pos_weight, gamma=2.0)
+                pos_weight = (n_matches / n_non_matches).item()
+                focal_loss = FocalLoss_g4( gamma=2.0)
                 loss_mar = compute_margin_loss(P[unmatched], C)
                 loss = focal_loss(P[unmatched], C)
                 loss = loss + loss_mar

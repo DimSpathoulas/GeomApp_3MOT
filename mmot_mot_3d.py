@@ -100,7 +100,7 @@ class TrackerNN(nn.Module):
         # )
 
 
-                # Neural network components - INITIALIZED ONCE
+        # Neural network components - INITIALIZED ONCE
         self.G1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
             nn.ReLU(),
@@ -334,7 +334,7 @@ class TrackerNN(nn.Module):
     def Criterion(self, distance_matrix=None, K=None, mask=None):
         pos, neg = self.retrieve_pairs_remake(K, mask)
         
-        T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 6.0, 3.0, 3.0])
+        T, C_contr, C_pos, C_neg = map(lambda x: torch.tensor(x, device=device), [11.0, 8.0, 5.0, 5.0])
         L_contr = L_pos = L_neg = torch.tensor(0., device=device)
         
         if pos or neg:
@@ -504,27 +504,27 @@ class TrackerNN(nn.Module):
         # feature_map = self.expand_and_subtract(det_feats, trks_feats)
 
         # DISTANCE COMBINATION STAGE 1 (EXISTS IN EVERY STATE)
-        D_feat = self.distance_combination_stage_1(feature_map)
-        D = D_feat.detach().cpu().numpy() 
-        # print(D_mah, D_feat)
-        # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
-        # # print(cos_met)
+        if self.state == 0:
+            D_feat = self.distance_combination_stage_1(feature_map)
+            print(D_feat)
+            # D = D_feat.detach().cpu().numpy() 
+            # print(D_mah, D_feat)
+            # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
+            # # print(cos_met)
 
         # DISTANCE COMBINATION STAGE 2
         # IF STATE == 1 THEN USE DCS2 ONLY
         # IF STATE == 2 WE USE TRACK_INIT BUT (INHERINTENLY) IT NEEDS DCS2
         if self.state >= 1:
-
+            with torch.no_grad():
+                D_feat = self.distance_combination_stage_1(feature_map).detach()
+                # print(D_feat, D_mah)
             a = self.distance_combination_stage_2(feature_map)
             # if self.training == True:
             #     warmup_factor = min(self.epoch / 3, 1.0)
             #     a = a * warmup_factor
 
-            # D_module = D_mah/11.0 + ( (a + 5.0)* ( (D_feat) - (0.5 + b)))
-            # D_module = D_mah/11.0 - (1.0 - D_feat)
             D_module = D_mah + a * (D_feat - 0.5)
-            # D_module = D_mah + 10.0 * D_feat
-            # D_module = (a + point_five ) * D_mah + ((b + point_five) * (D_feat))
 
 
         # IF WE TRAIN FOR D_FEAT
@@ -545,15 +545,15 @@ class TrackerNN(nn.Module):
                                         prev_gts=prev_gts, epoch=self.epoch)
             
             if K.shape[0] > 0:
-                # print(D_module, D_mah/11, D_feat, K, '\n')
+                # print(D_module, a, D_feat, K, '\n')
                 loss = self.Criterion(D_module, K, mask)  # criterion is costum loss
+                # print(loss)
 
             D = D_module.detach().cpu().numpy()  
 
 
-
         # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
-        if self.training == False : # or self.state >= 2
+        if self.training == False or self.state >= 2 : # 
             D = D_module.cpu().numpy()  
 
         # GREEDY MATCH

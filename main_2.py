@@ -125,14 +125,14 @@ def track_nuscenes():
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
     
-    parser.add_argument('--training', type=str, default=True,
+    parser.add_argument('--training', type=str, default=False,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='g4_train_nonmat_div_mat_margin025_2.pth',
+    parser.add_argument('--load_model_state', type=str, default='g4_train_margin04.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='g4_train_nonmat_div_mat_margin025_2.pth',
+    parser.add_argument('--save_model_state', type=str, default='g4_train_margin04.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='g4_train_nonmat_div_mat_margin025_2.json',
+    parser.add_argument('--output_path', type=str, default='g4_train_margin04.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()

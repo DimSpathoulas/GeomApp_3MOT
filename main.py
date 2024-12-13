@@ -59,7 +59,7 @@ def load_tracker_states(Tracker, load_path):
         state_dict = torch.load(load_path)
         Tracker.G1.load_state_dict(state_dict['G1'])
         Tracker.G2.load_state_dict(state_dict['G2'])
-        # Tracker.G3.load_state_dict(state_dict['G3'])
+        Tracker.G3.load_state_dict(state_dict['G3'])
         Tracker.G4.load_state_dict(state_dict['G4'])
         print(f"Loaded G1, G2, G3, G4 states from {load_path}")
     else:
@@ -134,11 +134,11 @@ def track_nuscenes():
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes.pth', # interpolated_g2
+    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes_2.pth', # real_train_g2_all_classes_3
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='real_train_g3_all_classes_only_a_dfeat_min05_no_norms.pth',
+    parser.add_argument('--save_model_state', type=str, default='real_train_g3_all_classes_no_norm_744.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='real_train_g3_all_classes_only_a_dfeat_min05_no_norms.json',
+    parser.add_argument('--output_path', type=str, default='real_train_g3_all_classes_no_norm_744.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -226,7 +226,7 @@ def track_nuscenes():
     total_time = 0.0
     total_frames = 0
 
-    # writer = SummaryWriter('runs/empty')
+    # writer = SummaryWriter('runs/G2')
 
     for epoch in range(EPOCHS):
 
@@ -234,7 +234,7 @@ def track_nuscenes():
 
         print('epoch', epoch + 1)
 
-        epoch_loss = None
+        epoch_loss = torch.tensor(0.0, device=device)
 
         if epoch == EPOCHS - 1:
             training = False
@@ -419,12 +419,12 @@ def track_nuscenes():
                 total_time += cycle_time
 
                 if epoch < EPOCHS - 1 and sample_loss is not None:
-                    sample_loss.div(cs)
+                    sample_loss = sample_loss.div(cs)
                     cs = 0
                     sample_loss.backward()
                     torch.nn.utils.clip_grad_norm_(params_to_optimize, max_norm=1.0)
                     optimizer.step()
-                    # epoch_loss = epoch_loss + sample_loss.detach()
+                    epoch_loss = epoch_loss + sample_loss.detach()
 
                 # prev_ground_truths = copy.deepcopy(current_ground_truths)
                 current_sample_token = nusc.get('sample', current_sample_token)['next']
@@ -445,9 +445,7 @@ def track_nuscenes():
         print("Total learning took: %.3f for %d frames or %.1f FPS" % (
             total_time, total_frames, total_frames / total_time))
 
-        # writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
-
-        # scheduler.step(epoch_loss.item())
+    #     writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
 
     #     for name, param in Tracker.G1.named_parameters():
     #         if param.grad is not None:
