@@ -455,7 +455,7 @@ class TrackerNN(nn.Module):
 
         tracking_state['frame_count'] += 1  # NEW FRAME
 
-        gamma = 0.3
+        gamma = 0.2
         
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
@@ -504,13 +504,12 @@ class TrackerNN(nn.Module):
         # feature_map = self.expand_and_subtract(det_feats, trks_feats)
 
         # DISTANCE COMBINATION STAGE 1 (EXISTS IN EVERY STATE)
-        if self.state == 0:
-            D_feat = self.distance_combination_stage_1(feature_map)
-            print(D_feat)
-            # D = D_feat.detach().cpu().numpy() 
-            # print(D_mah, D_feat)
-            # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
-            # # print(cos_met)
+        D_feat = self.distance_combination_stage_1(feature_map)
+        # print(D_feat)
+        # D = D_feat.detach().cpu().numpy() 
+        # print(D_mah, D_feat)
+        # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
+        # # print(cos_met)
 
         # DISTANCE COMBINATION STAGE 2
         # IF STATE == 1 THEN USE DCS2 ONLY

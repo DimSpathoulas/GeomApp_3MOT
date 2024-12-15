@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 import torch
 from functions.outer_funcs import create_box_annotations, format_sample_result
-from backbone import TrackerNN
+from g1_g4 import TrackerNN
 from nuscenes import NuScenes
 from torch import nn
 from torch.utils.tensorboard import SummaryWriter

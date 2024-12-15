@@ -61,117 +61,117 @@ def visualize_combined_manifolds(name, pcds_all, fvs_all):
     for k, v in pcds_flattened.items():
         labels.extend([k] * v.shape[0])
     
-    # # Perform PCA for 3D visualization
-    # pca_3d_pcds = PCA(n_components=3)
-    # pcds_pca_3d = pca_3d_pcds.fit_transform(pcds_combined.cpu().numpy())
+    # Perform PCA for 3D visualization
+    pca_3d_pcds = PCA(n_components=3)
+    pcds_pca_3d = pca_3d_pcds.fit_transform(pcds_combined.cpu().numpy())
 
-    # pca_3d_fvs = PCA(n_components=3)
-    # fvs_pca_3d = pca_3d_fvs.fit_transform(fvs_combined.cpu().numpy())
+    pca_3d_fvs = PCA(n_components=3)
+    fvs_pca_3d = pca_3d_fvs.fit_transform(fvs_combined.cpu().numpy())
 
-    # # Define viewpoints (elev, azim)
-    # viewpoints = [
-    #     (20, 30),  # Viewpoint 1
-    #     (60, 120), # Viewpoint 2
-    #     (90, 180)  # Viewpoint 3
-    # ]
+    # Define viewpoints (elev, azim)
+    viewpoints = [
+        (20, 30),  # Viewpoint 1
+        (60, 120), # Viewpoint 2
+        (90, 180)  # Viewpoint 3
+    ]
 
-    # # Create plots with different viewpoints
-    # for i, (elev, azim) in enumerate(viewpoints):
-    #     fig = plt.figure(figsize=(16, 8))
+    # Create plots with different viewpoints
+    for i, (elev, azim) in enumerate(viewpoints):
+        fig = plt.figure(figsize=(16, 8))
         
-    #     # 3D PCA for point cloud data
-    #     ax1 = fig.add_subplot(121, projection='3d')
-    #     for tracking_name in NUSCENES_TRACKING_NAMES:
-    #         mask = np.array(labels) == tracking_name
-    #         ax1.scatter(
-    #             pcds_pca_3d[mask, 0], 
-    #             pcds_pca_3d[mask, 1], 
-    #             pcds_pca_3d[mask, 2], 
-    #             c=COLOR_MAP[tracking_name], 
-    #             label=tracking_name, 
-    #             alpha=0.7
-    #         )
-    #     ax1.set_title(f'3D PCA of pcds for {name} - View {i+1}')
-    #     ax1.set_xlabel('PCA1')
-    #     ax1.set_ylabel('PCA2')
-    #     ax1.set_zlabel('PCA3')
-    #     ax1.view_init(elev=elev, azim=azim)
-    #     ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        # 3D PCA for point cloud data
+        ax1 = fig.add_subplot(121, projection='3d')
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            mask = np.array(labels) == tracking_name
+            ax1.scatter(
+                pcds_pca_3d[mask, 0], 
+                pcds_pca_3d[mask, 1], 
+                pcds_pca_3d[mask, 2], 
+                c=COLOR_MAP[tracking_name], 
+                label=tracking_name, 
+                alpha=0.7
+            )
+        ax1.set_title(f'3D PCA of pcds for {name} - View {i+1}')
+        ax1.set_xlabel('PCA1')
+        ax1.set_ylabel('PCA2')
+        ax1.set_zlabel('PCA3')
+        ax1.view_init(elev=elev, azim=azim)
+        ax1.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
-    #     # 3D PCA for feature vectors
-    #     ax2 = fig.add_subplot(122, projection='3d')
-    #     for tracking_name in NUSCENES_TRACKING_NAMES:
-    #         mask = np.array(labels) == tracking_name
-    #         ax2.scatter(
-    #             fvs_pca_3d[mask, 0], 
-    #             fvs_pca_3d[mask, 1], 
-    #             fvs_pca_3d[mask, 2], 
-    #             c=COLOR_MAP[tracking_name], 
-    #             label=tracking_name, 
-    #             alpha=0.7
-    #         )
-    #     ax2.set_title(f'3D PCA of fvs for {name} - View {i+1}')
-    #     ax2.set_xlabel('PCA1')
-    #     ax2.set_ylabel('PCA2')
-    #     ax2.set_zlabel('PCA3')
-    #     ax2.view_init(elev=elev, azim=azim)
-    #     ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        # 3D PCA for feature vectors
+        ax2 = fig.add_subplot(122, projection='3d')
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            mask = np.array(labels) == tracking_name
+            ax2.scatter(
+                fvs_pca_3d[mask, 0], 
+                fvs_pca_3d[mask, 1], 
+                fvs_pca_3d[mask, 2], 
+                c=COLOR_MAP[tracking_name], 
+                label=tracking_name, 
+                alpha=0.7
+            )
+        ax2.set_title(f'3D PCA of fvs for {name} - View {i+1}')
+        ax2.set_xlabel('PCA1')
+        ax2.set_ylabel('PCA2')
+        ax2.set_zlabel('PCA3')
+        ax2.view_init(elev=elev, azim=azim)
+        ax2.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
         
-    #     plt.tight_layout()
-    #     plt.savefig(f'manifolds/pca/combined_pca_3d_view_{i+1}_{name}.png', bbox_inches='tight')
-    #     plt.show()
+        plt.tight_layout()
+        plt.savefig(f'manifolds/pca/combined_pca_3d_view_{i+1}_{name}.png', bbox_inches='tight')
+        plt.show()
 
-    # ### t-SNE Visualization
-    # tsne = TSNE(n_components=3, random_state=42)
-    # normalized_features = normalize(pcds_combined.cpu().numpy(), axis=1, norm='l2')
-    # normalized_feats = normalize(fvs_combined.cpu().numpy(), axis=1, norm='l2')
-    # pcds_tsne_3d = tsne.fit_transform(normalized_features)
-    # fvs_tsne_3d = tsne.fit_transform(normalized_feats)
+    ### t-SNE Visualization
+    tsne = TSNE(n_components=3, random_state=42)
+    normalized_features = normalize(pcds_combined.cpu().numpy(), axis=1, norm='l2')
+    normalized_feats = normalize(fvs_combined.cpu().numpy(), axis=1, norm='l2')
+    pcds_tsne_3d = tsne.fit_transform(normalized_features)
+    fvs_tsne_3d = tsne.fit_transform(normalized_feats)
 
-    # # Create additional viewpoints
-    # view_angles = [(60, 120), (90, 180), (120, 240)]
-    # for elev, azim in view_angles:
-    #     fig = plt.figure(figsize=(18, 12))
+    # Create additional viewpoints
+    view_angles = [(60, 120), (90, 180), (120, 240)]
+    for elev, azim in view_angles:
+        fig = plt.figure(figsize=(18, 12))
 
-    #     # Point cloud 3D t-SNE
-    #     ax1 = fig.add_subplot(121, projection='3d')
-    #     for tracking_name in NUSCENES_TRACKING_NAMES:
-    #         mask = np.array(labels) == tracking_name
-    #         ax1.scatter(
-    #             pcds_tsne_3d[mask, 0], 
-    #             pcds_tsne_3d[mask, 1], 
-    #             pcds_tsne_3d[mask, 2], 
-    #             c=COLOR_MAP[tracking_name], 
-    #             label=tracking_name, 
-    #             alpha=0.7
-    #         )
-    #     ax1.set_title(f'3D t-SNE of pcds for {name}')
-    #     ax1.set_xlabel('TSNE1')
-    #     ax1.set_ylabel('TSNE2')
-    #     ax1.set_zlabel('TSNE3')
-    #     ax1.view_init(elev=elev, azim=azim)  # Set new viewpoint
+        # Point cloud 3D t-SNE
+        ax1 = fig.add_subplot(121, projection='3d')
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            mask = np.array(labels) == tracking_name
+            ax1.scatter(
+                pcds_tsne_3d[mask, 0], 
+                pcds_tsne_3d[mask, 1], 
+                pcds_tsne_3d[mask, 2], 
+                c=COLOR_MAP[tracking_name], 
+                label=tracking_name, 
+                alpha=0.7
+            )
+        ax1.set_title(f'3D t-SNE of pcds for {name}')
+        ax1.set_xlabel('TSNE1')
+        ax1.set_ylabel('TSNE2')
+        ax1.set_zlabel('TSNE3')
+        ax1.view_init(elev=elev, azim=azim)  # Set new viewpoint
 
-    #     # Feature vector 3D t-SNE
-    #     ax2 = fig.add_subplot(122, projection='3d')
-    #     for tracking_name in NUSCENES_TRACKING_NAMES:
-    #         mask = np.array(labels) == tracking_name
-    #         ax2.scatter(
-    #             fvs_tsne_3d[mask, 0], 
-    #             fvs_tsne_3d[mask, 1], 
-    #             fvs_tsne_3d[mask, 2], 
-    #             c=COLOR_MAP[tracking_name], 
-    #             label=tracking_name, 
-    #             alpha=0.7
-    #         )
-    #     ax2.set_title(f'3D t-SNE of fvs for {name}')
-    #     ax2.set_xlabel('TSNE1')
-    #     ax2.set_ylabel('TSNE2')
-    #     ax2.set_zlabel('TSNE3')
-    #     ax2.view_init(elev=elev, azim=azim)  # Set new viewpoint
+        # Feature vector 3D t-SNE
+        ax2 = fig.add_subplot(122, projection='3d')
+        for tracking_name in NUSCENES_TRACKING_NAMES:
+            mask = np.array(labels) == tracking_name
+            ax2.scatter(
+                fvs_tsne_3d[mask, 0], 
+                fvs_tsne_3d[mask, 1], 
+                fvs_tsne_3d[mask, 2], 
+                c=COLOR_MAP[tracking_name], 
+                label=tracking_name, 
+                alpha=0.7
+            )
+        ax2.set_title(f'3D t-SNE of fvs for {name}')
+        ax2.set_xlabel('TSNE1')
+        ax2.set_ylabel('TSNE2')
+        ax2.set_zlabel('TSNE3')
+        ax2.view_init(elev=elev, azim=azim)  # Set new viewpoint
 
-    #     plt.tight_layout()
-    #     plt.savefig(f'manifolds/tsne/combined_tsne_3d_{name}_view_{elev}_{azim}.png', bbox_inches='tight')
-    #     plt.close()
+        plt.tight_layout()
+        plt.savefig(f'manifolds/tsne/combined_tsne_3d_{name}_view_{elev}_{azim}.png', bbox_inches='tight')
+        plt.close()
 
 
     # UMAP Visualization

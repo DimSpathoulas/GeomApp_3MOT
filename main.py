@@ -129,16 +129,16 @@ def track_nuscenes():
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
     
-    parser.add_argument('--state', type=str, default=1,
+    parser.add_argument('--state', type=str, default=0,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=True,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes_2.pth', # real_train_g2_all_classes_3
+    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes_gamma02.pth', # real_train_g2_all_classes_3
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='real_train_g3_all_classes_no_norm_744.pth',
+    parser.add_argument('--save_model_state', type=str, default='real_train_g2_all_classes_gamma02.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='real_train_g3_all_classes_no_norm_744.json',
+    parser.add_argument('--output_path', type=str, default='real_train_g2_all_classes_gamma02.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -163,7 +163,7 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    if state > 0:
+    if not training:
         Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
