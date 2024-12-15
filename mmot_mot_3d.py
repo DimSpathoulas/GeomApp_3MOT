@@ -224,13 +224,13 @@ class TrackerNN(nn.Module):
 
 
     # Initialize AB3DMOT attributes - CALL FOR EACH NEW SCENE
-    def reinit_ab3dmot(self, tracking_name, max_age=2, min_hits=3, training=False, state=0, criterion=None, epoch=0):
+    def reinit_ab3dmot(self, tracking_name, max_age=2, min_hits=3, training=False, state=0, criterion=None, epoch=0, blender=0.3, association_threshold=11):
         self.tracking_states[tracking_name] = {
             'max_age': max_age,
             'min_hits': min_hits,
             'trackers': [],
             'frame_count': 0,
-            'mahanalobis_thresh': 11 , #  0.80
+            # 'mahanalobis_thresh': 11 , #  0.80
             'track_init_thresh':0.5 ,
             'features': [],
             'order': [0, 1, 2, 6, 3, 4, 5],  # x, y, z, rot_z, l, w, h
@@ -240,7 +240,8 @@ class TrackerNN(nn.Module):
         self.state = state
         self.criterion = criterion
         self.epoch = epoch
-
+        self.blender = blender
+        self.association_threshold = association_threshold
 
     # EXPAND AND CONCAT FOR G2 G3
     def expand_and_concat(self, det_feats, trk_feats):
@@ -455,7 +456,6 @@ class TrackerNN(nn.Module):
 
         tracking_state['frame_count'] += 1  # NEW FRAME
 
-        gamma = 0.2
         
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
@@ -501,15 +501,14 @@ class TrackerNN(nn.Module):
 
         # CREATE FEATURE MAP BASED ON FEATURES OF DETS AND TRACKS
         feature_map = self.expand_and_concat(det_feats, trks_feats)
-        # feature_map = self.expand_and_subtract(det_feats, trks_feats)
 
         # DISTANCE COMBINATION STAGE 1 (EXISTS IN EVERY STATE)
-        D_feat = self.distance_combination_stage_1(feature_map)
+        # D_feat = self.distance_combination_stage_1(feature_map)
         # print(D_feat)
         # D = D_feat.detach().cpu().numpy() 
         # print(D_mah, D_feat)
-        # # cos_met = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
-        # # print(cos_met)
+        D = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
+        # print(cos_met)
 
         # DISTANCE COMBINATION STAGE 2
         # IF STATE == 1 THEN USE DCS2 ONLY
@@ -537,6 +536,8 @@ class TrackerNN(nn.Module):
 
             D = mah_dist
 
+        if self.training == False and self.state == 0:
+            D = D_feat.detach().cpu().numpy()
 
         # IF TRAIN AND WE TRAIN FOR COMBINATION STAGE 2
         if self.training == True and self.state == 1:
@@ -564,7 +565,7 @@ class TrackerNN(nn.Module):
             distance_matrix=D,
             dets=dets,
             trks=trks,
-            mahalanobis_threshold= tracking_state['mahanalobis_thresh'])  # change based on val or train !!!!!!!
+            mahalanobis_threshold= self.association_threshold)  # change based on val or train !!!!!!!
                                                                         
         # UPDATE MATCHED TRACKERS BASED ON PAIRED DETECTIONS
         for t, trk in enumerate(tracking_state['trackers']):
@@ -572,7 +573,7 @@ class TrackerNN(nn.Module):
                 d = matched[np.where(matched[:, 1] == t)[0], 0]  # a list of index
                 trk.update(dets[d, :][0], info[d, :][0])
                 trk.track_score = info[d, :][0][-1]
-                blended_feature = det_feats[d].detach() * gamma + trks_feats[t] * (1.0- gamma)
+                blended_feature = det_feats[d].detach() * self.blender + trks_feats[t] * (1.0- self.blender)
                 tracking_state['features'][t] = blended_feature.squeeze(0)
 
         # NEW TRACKS INITIALIZATION

@@ -128,17 +128,20 @@ def track_nuscenes():
     parser.add_argument('--svd_cam', type=str,
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
-    
-    parser.add_argument('--state', type=str, default=0,
+    parser.add_argument('--blender', type=str, default=0.3,
+                help='blending factor')
+    parser.add_argument('--association_threshold', type=str, default=0.8,
+                help='Threshold for association acceptance')
+    parser.add_argument('--state', type=str, default=1,
                         help='0 = G2, 1 = G3, 2 = G4')
-    parser.add_argument('--training', type=str, default=True,
+    parser.add_argument('--training', type=str, default=False,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='real_train_g2_all_classes_gamma02.pth', # real_train_g2_all_classes_3
+    parser.add_argument('--load_model_state', type=str, default='nothing.pth', # real_train_g2_all_classes_3
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='real_train_g2_all_classes_gamma02.pth',
+    parser.add_argument('--save_model_state', type=str, default='nothing.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='real_train_g2_all_classes_gamma02.json',
+    parser.add_argument('--output_path', type=str, default='cosine_thresh08_blender03.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -154,6 +157,8 @@ def track_nuscenes():
     # internal states of model
     state = args.state
     training = args.training
+    blender = args.blender
+    association_threshold = args.association_threshold
 
     # load and save model DO THIS LATER
     load_model_state = args.load_model_state
@@ -163,8 +168,8 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    if not training:
-        Tracker = load_tracker_states(Tracker, load_model_state)
+    # if not training:
+    #     Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
         params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G2.parameters())
@@ -268,7 +273,15 @@ def track_nuscenes():
             current_sample_token = first_sample_token
 
             for tracking_name in NUSCENES_TRACKING_NAMES:
-                Tracker.reinit_ab3dmot(tracking_name=tracking_name, training=training, state=state, criterion=criterion, epoch=epoch)
+                Tracker.reinit_ab3dmot(
+                    tracking_name=tracking_name,
+                    training=training,
+                    state=state,
+                    criterion=criterion,
+                    epoch=epoch,
+                    blender=blender,
+                    association_threshold=association_threshold
+                )
 
             prev_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
             current_ground_truths = {tracking_name: [] for tracking_name in NUSCENES_TRACKING_NAMES}
@@ -400,7 +413,7 @@ def track_nuscenes():
                                     # scene_loss = scene_loss + loss
 
                 # val
-                if epoch == EPOCHS - 1 and state > 0:
+                if epoch == EPOCHS - 1:
 
                     for tracking_name in NUSCENES_TRACKING_NAMES:
                         if dets_all[tracking_name]['dets'].shape[0] > 0:

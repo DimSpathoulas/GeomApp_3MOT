@@ -5,11 +5,11 @@ This is the main module. A review paper in english is under construction.
 
 ## Instructions
 ### 1. Extract Features
-If not already extract the Geometric features from CenterPoint detector and the corresponding Appearance features from each camera. Follow our repo.
+If not already extract the Geometric features from CenterPoint detector and the corresponding Appearance features from each camera from Mask R-CNN. Follow our repo.
 
 ### 2. Clone our repo and setup the environment
 ```bash
-cd path_to_your_projects/GEOM_APP_Feature_Tracking
+cd path_to_your_projects/GEOMAPP_Feature_Tracking
 conda create --name feature_tracking python=3.8.19
 git clone https://github.com/DimSpathoulas/PROB_3D_MULMOD_MOT.git
 conda env create -f environment.yml
@@ -42,7 +42,7 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
 ## The Final Project dir
 ```bash
 # Path_to_your_projects        
-└── GEOM_APP_Feature_Tracking
+└── GEOMAPP_Feature_Tracking
        ├── main.py <-- main code
        ├── main_2.py <-- main code for running only G1,G4
        ├── mmot_mot_3d.py <-- backbone of main.py
@@ -57,9 +57,10 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
               ├── inner_funcs.py   <-- functions used for tracking
               ├── outer_funcs.py   <-- groundtruth retrieval and output customization
               ├── Kalman_Filter.py   <-- Linear Kalman Filter
+       ├── results             <-- directory containing results
 ```
 
-python evaluate_nuscenes.py --output_dir results real_train_g3_all_classes_no_norm_855.json > results/real_train_g3_all_classes_no_norm_855.txt
+python evaluate_nuscenes.py --output_dir results cosine_thresh08_blender03.json > results/cosine_thresh08_blender03.txt
 
 
 val_conv_layer_025.pkl
