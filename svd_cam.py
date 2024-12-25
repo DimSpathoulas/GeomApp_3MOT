@@ -41,8 +41,8 @@ def svd():
     parser = argparse.ArgumentParser(description="TrainVal G2 with lidar and camera detected characteristics")
     parser.add_argument('--version', type=str, default='v1.0-trainval', help='NuScenes dataset version')
     parser.add_argument('--data_root', type=str, default='/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval', help='Root directory of the NuScenes dataset')
-    parser.add_argument('--data', type=str, default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_val_2.pkl", help='Path to detections data')
-    parser.add_argument('--output_path', type=str, default="svd_matrices_cam.pkl", help='Path to save the SVD projection matrices')
+    parser.add_argument('--data', type=str, default="/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/train_conv_layer51233_thr057_interpolated.pkl", help='Path to detections data')
+    parser.add_argument('--output_path', type=str, default="svd_matrices_cam_inter.pkl", help='Path to save the SVD projection matrices')
 
     args = parser.parse_args()
     data = args.data

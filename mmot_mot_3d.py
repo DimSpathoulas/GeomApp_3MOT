@@ -63,43 +63,6 @@ class TrackerNN(nn.Module):
     def __init__(self):
         super(TrackerNN, self).__init__()
 
-        # # Neural network components - INITIALIZED ONCE
-        # self.G1 = nn.Sequential(
-        #     nn.Linear(256 + 6, 512),
-        #     nn.ReLU(),
-        #     nn.Linear(512, out_features=1152),
-        # )
-        
-        # self.G2 = nn.Sequential(
-        #     nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=0, stride=1),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     nn.Linear(in_features=128, out_features=32),
-        #     nn.ReLU(),
-        #     nn.Linear(32, 1),
-        #     nn.Sigmoid()
-        # )
-
-        # self.G3 = nn.Sequential(
-        #     nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=0, stride=1),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     nn.Linear(in_features=128, out_features=32),
-        #     nn.ReLU(),
-        #     nn.Linear(32, 2)
-        # )
-
-        # self.G4 = nn.Sequential(
-        #     nn.Conv2d(in_channels=256, out_channels=128, kernel_size=3, padding=0, stride=1),
-        #     nn.ReLU(),
-        #     nn.Flatten(),
-        #     nn.Linear(in_features=128, out_features=32),
-        #     nn.ReLU(),
-        #     nn.Linear(32, 1),
-        #     nn.Sigmoid()
-        # )
-
-
         # Neural network components - INITIALIZED ONCE
         self.G1 = nn.Sequential(
             nn.Linear(1024 + 6, 1536),
@@ -456,7 +419,9 @@ class TrackerNN(nn.Module):
 
         tracking_state['frame_count'] += 1  # NEW FRAME
 
-        
+        # if self.state == 0 and self.training == False:
+        #     self.association_threshold = 0.95
+
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
             dets_all['dets'], dets_all['pcbs'], dets_all['fvecs'],
@@ -503,11 +468,11 @@ class TrackerNN(nn.Module):
         feature_map = self.expand_and_concat(det_feats, trks_feats)
 
         # DISTANCE COMBINATION STAGE 1 (EXISTS IN EVERY STATE)
-        # D_feat = self.distance_combination_stage_1(feature_map)
+        D_feat = self.distance_combination_stage_1(feature_map)
         # print(D_feat)
         # D = D_feat.detach().cpu().numpy() 
         # print(D_mah, D_feat)
-        D = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
+        # D = self.compute_pairwise_cosine_similarity(det_feats=det_feats, trk_feats=trks_feats)
         # print(cos_met)
 
         # DISTANCE COMBINATION STAGE 2
@@ -553,7 +518,7 @@ class TrackerNN(nn.Module):
 
 
         # ELSE WE ARE IN VAL MODE (OR TRAIN G4) AND WE USE D_MODULE AS D WITH MAH_THRESH 11
-        if self.training == False or self.state >= 2 : # 
+        if (self.training == False and self.state == 1) or self.state == 2: # 
             D = D_module.cpu().numpy()  
 
         # GREEDY MATCH

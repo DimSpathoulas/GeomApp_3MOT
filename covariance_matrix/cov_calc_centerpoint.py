@@ -270,7 +270,7 @@ if __name__ == '__main__':
             cfg_ = DetectionConfig.deserialize(json.load(_f))
 
     if 'train' in eval_set_:
-        detection_file = '/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/mrcnn_train.pkl' #  '../../data/centerpoint_dets/megvii_train.json'
+        detection_file = '/home/ktsiakas/thesis_new/2D_FEATURE_EXTRACTOR/train_conv_layer51233_thr057_interpolated.pkl' #  '../../data/centerpoint_dets/megvii_train.json'
         data_root = '/second_ext4/ktsiakas/kosmas/nuscenes/v1.0-trainval'
         version = 'v1.0-trainval'
     elif 'val' in eval_set_:

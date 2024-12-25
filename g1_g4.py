@@ -52,32 +52,42 @@ def compute_margin_loss(P, C, margin=0.30, lambda_margin=1):
     Returns:
         torch.Tensor: Margin loss.
     """
+
+    total = 0
+
+    C_pos = 0.65
+    C_neg = 0.35
     # Extract positive and negative indices
     pos_indices = (C == 1).nonzero(as_tuple=True)[0]
     neg_indices = (C == 0).nonzero(as_tuple=True)[0]
 
-    # Ensure we have valid positive and negative indices
-    if len(pos_indices) > 0 and len(neg_indices) > 0:
-        P_pos = P[pos_indices]  # Positive predictions (n_pos x 1)
-        P_neg = P[neg_indices]  # Negative predictions (n_neg x 1)
+    # # Ensure we have valid positive and negative indices
+    # if len(pos_indices) > 0 and len(neg_indices) > 0:
+    #     P_pos = P[pos_indices]  # Positive predictions (n_pos x 1)
+    #     P_neg = P[neg_indices]  # Negative predictions (n_neg x 1)
 
-        # Compute pairwise differences using broadcasting
-        diff = P_pos.unsqueeze(1) - P_neg.unsqueeze(0)  # (n_pos x n_neg)
+    #     # Compute pairwise differences using broadcasting
+    #     diff = P_pos.unsqueeze(1) - P_neg.unsqueeze(0)  # (n_pos x n_neg)
 
-        # Compute margin loss
-        margin_loss = torch.clamp(margin - diff, min=0).sum()
-        return lambda_margin * margin_loss
+    #     # Compute margin loss
+    #     margin_loss = torch.clamp(margin - diff, min=0).sum() / ( len(pos_indices) * len(neg_indices))
+    #     total = total + margin_loss
     
     if len(pos_indices) > 0:
+        
         P_pos = P[pos_indices] 
-        C_pos = 0.65
-    
+        margin_pos = torch.clamp(C_pos - P_pos, min=0).sum() / len(pos_indices)
+
+        total = total + margin_pos
+
     if len(neg_indices) > 0:
+        
         P_neg = P[neg_indices]
-        C_neg = 0.35
+        margin_neg = torch.clamp(P_neg - C_neg, min=0).sum() / len(neg_indices)
 
+        total = total + margin_neg
 
-
+    return total
 
 
 class TrackerNN(nn.Module):
@@ -399,11 +409,11 @@ class TrackerNN(nn.Module):
                 C = self.construct_C_matrix_2(dets[unmatched_dets], curr_gts)
                 n_matches= max((C == 1).sum(), 1) 
                 n_non_matches = max((C == 0).sum(), 1)
-                pos_weight = (n_matches / n_non_matches).item()
-                focal_loss = FocalLoss_g4( gamma=2.0)
-                loss_mar = compute_margin_loss(P[unmatched], C)
+                pos_weight = ( n_non_matches/n_matches ).item()
+                focal_loss = FocalLoss_g4(pos_weight, gamma=2.0)
+                # loss_mar = compute_margin_loss(P[unmatched], C) ## add the los backkkk !!!!!!!!!!!
                 loss = focal_loss(P[unmatched], C)
-                loss = loss + loss_mar
+                loss = loss
 
 
 

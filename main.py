@@ -128,20 +128,20 @@ def track_nuscenes():
     parser.add_argument('--svd_cam', type=str,
                 default="/home/ktsiakas/thesis_new/PROB_3D_MULMOD_MOT/svd_matrices_cam.pkl",
                 help='SVD matrices for lower representation')
-    parser.add_argument('--blender', type=str, default=0.3,
+    parser.add_argument('--blender', type=str, default=0.55,
                 help='blending factor')
-    parser.add_argument('--association_threshold', type=str, default=0.8,
-                help='Threshold for association acceptance')
-    parser.add_argument('--state', type=str, default=1,
+    parser.add_argument('--association_threshold', type=str, default=0.30,
+                help='Threshold for association acceptance (11 for train and 0.9 for val in G2)')
+    parser.add_argument('--state', type=str, default=0,
                         help='0 = G2, 1 = G3, 2 = G4')
     parser.add_argument('--training', type=str, default=False,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='nothing.pth', # real_train_g2_all_classes_3
+    parser.add_argument('--load_model_state', type=str, default='blender_05.pth', # real_train_g2_all_classes_3
                         help='destination and name for model to load (for state == 0 leave as default)')
     parser.add_argument('--save_model_state', type=str, default='nothing.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='cosine_thresh08_blender03.json',
+    parser.add_argument('--output_path', type=str, default='blender_05_thresh_030.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
@@ -168,7 +168,7 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    # if not training:
+    # if not training or state > 0:
     #     Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
@@ -499,19 +499,18 @@ def track_nuscenes():
     # # save tracking results after inference
     save_tracker_states(Tracker, save_model_state)
 
-    if state > 0:
 
-        meta = {
-            "use_camera": True,
-            "use_lidar": True,
-            "use_radar": False,
-            "use_map": False,
-            "use_external": False
-        }
+    meta = {
+        "use_camera": True,
+        "use_lidar": True,
+        "use_radar": False,
+        "use_map": False,
+        "use_external": False
+    }
 
-        output_data = {'meta': meta, 'results': results}
-        with open(output_path, 'w') as outfile:
-            json.dump(output_data, outfile)
+    output_data = {'meta': meta, 'results': results}
+    with open(output_path, 'w') as outfile:
+        json.dump(output_data, outfile)
 
         print('results .json saved as', output_path)
 
