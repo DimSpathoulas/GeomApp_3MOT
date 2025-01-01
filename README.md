@@ -11,7 +11,7 @@ If not already extract the Geometric features from CenterPoint detector and the 
 ```bash
 cd path_to_your_projects/GEOMAPP_Feature_Tracking
 conda create --name feature_tracking python=3.8.19
-git clone https://github.com/DimSpathoulas/PROB_3D_MULMOD_MOT.git
+git clone https://github.com/DimSpathoulas/GeomApp_MMOT.git
 conda env create -f environment.yml
 conda activate feature_tracking
 ```
