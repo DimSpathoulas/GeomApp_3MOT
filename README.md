@@ -59,4 +59,10 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
        ├── results           <-- directory containing results
 ```
 
+## References and Acknowledgments
 
+### References
+- Module heavily based on the principles outlined in this paper: [Probabilistic 3D Multi-Modal, Multi-Object Tracking for Autonomous Driving](https://arxiv.org/pdf/2012.13755)
+### Acknowledgments
+- Built on top of this implementation:
+https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
