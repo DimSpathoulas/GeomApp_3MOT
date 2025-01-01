@@ -5,13 +5,13 @@ This is the main module. A review paper in english is under construction.
 
 ## Instructions
 ### 1. Extract Features
-If not already extract the Geometric features from CenterPoint detector and the corresponding Appearance features from each camera from Mask R-CNN. Follow our repo.
+If not already extract the Geometric features from CenterPoint detector and the corresponding Appearance features from each camera from Mask R-CNN. Follow our [Point Cloud Feature Extractor](https://github.com/DimSpathoulas/Point_Cloud_Feature_Extractor.git) and our [2d Feature Extractor](https://github.com/DimSpathoulas/2D_FEATURE_EXTRACTOR.git).
 
 ### 2. Clone our repo and setup the environment
 ```bash
 cd path_to_your_projects/GEOMAPP_Feature_Tracking
 conda create --name feature_tracking python=3.8.19
-git clone https://github.com/DimSpathoulas/GeomApp_MMOT.git
+git clone https://github.com/DimSpathoulas/GeomApp_3MOT.git
 conda env create -f environment.yml
 conda activate feature_tracking
 ```
