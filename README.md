@@ -21,18 +21,18 @@ I have hardcoded the results for the variances based on centerpoint detector in 
 ```bash
 python covariance_matrix/cov_calc_centerpoint.py > covariance_matrix/centerpoint_cov.txt
 ```
-### 3. Run main code
+### 4. Run main code
 You can run the main code for all 3 learning multi-stages both in train and val mode. Note train mode in stages 1 and 2 will give as outputs both the resulting net .pth file and the .json tracking results ready for evaluation.
 To run our results:
 
 NOTE: CURRENTLY THERE IS A BUG ISSUE WITH G1, G3 STAGE
 
-### 3. Dimensionaly Reduction
+### 5. Dimensionaly Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
 You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them and ```svd_cam.py``` for appearance features . They will output a .pkl file.
 You can use these transformation matrices for training the modules with whatever features dimensions you want (you will need to hardcode the changes in main script for that).
 
-### 3. Get Results
+### 6. Get Results
 To get the tracking metric results run:
 ```bash
 python evaluate_nuscenes.py --output_dir results tracking_output.json > results/tracking_output.txt
