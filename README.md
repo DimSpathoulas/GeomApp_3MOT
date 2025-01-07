@@ -66,3 +66,7 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
 ### Acknowledgments
 - Built on top of this implementation:
 https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
+
+
+## Notes
+The association threshold should be adjusted to allow for user input during validation.
