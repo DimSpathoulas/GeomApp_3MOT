@@ -130,7 +130,7 @@ def track_nuscenes():
                 help='SVD matrices for lower representation')
     parser.add_argument('--blender', type=str, default=0.55,
                 help='blending factor')
-    parser.add_argument('--association_threshold', type=str, default=0.30,
+    parser.add_argument('--association_threshold', type=str, default=0.90,
                 help='Threshold for association acceptance (11 for train and 0.9 for val in G2)')
     parser.add_argument('--state', type=str, default=0,
                         help='0 = G2, 1 = G3, 2 = G4')
