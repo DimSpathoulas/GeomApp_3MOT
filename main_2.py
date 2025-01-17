@@ -475,7 +475,7 @@ def track_nuscenes():
     print('results .json saved as', output_path)
 
 if __name__ == '__main__':
-    print('SOMETHING CATCHY')
+    print('3d Geometric and Appearance based Multi-Object Tracking')
 
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
