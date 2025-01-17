@@ -168,8 +168,8 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    # if not training or state > 0:
-    #     Tracker = load_tracker_states(Tracker, load_model_state)
+    if not training or state > 0:
+        Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
         params_to_optimize = list(Tracker.G1.parameters()) + list(Tracker.G2.parameters())
@@ -515,7 +515,7 @@ def track_nuscenes():
         print('results .json saved as', output_path)
 
 if __name__ == '__main__':
-    print('SOMETHING CATCHY')
+    print('3d Geometric and Appearance based Multi-Object Tracking')
 
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
