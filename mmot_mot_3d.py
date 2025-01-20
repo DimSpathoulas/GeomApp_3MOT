@@ -419,8 +419,8 @@ class TrackerNN(nn.Module):
 
         tracking_state['frame_count'] += 1  # NEW FRAME
 
-        if self.state == 0 and self.training == False:
-            self.association_threshold = 0.90
+        # if self.state == 0 and self.training == False:
+        #     self.association_threshold = 0.90
 
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
@@ -501,7 +501,7 @@ class TrackerNN(nn.Module):
                 D = K.detach().cpu().numpy()
             else:
                 # D = mah_dist
-                D = D_module.detach().cpu().numpy()  
+                D = D_feat.detach().cpu().numpy()  
 
         if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
