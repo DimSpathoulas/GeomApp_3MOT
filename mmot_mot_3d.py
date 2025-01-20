@@ -135,7 +135,7 @@ class TrackerNN(nn.Module):
         cam_feats = cam_feats.view(cam_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
         
         # Fuse the normalized features
-        fused = cam_feats + lidar_feats
+        fused = cam_feats * 0.15 + lidar_feats * 0.85
         
         # normalize the fused output again
         fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
@@ -419,8 +419,8 @@ class TrackerNN(nn.Module):
 
         tracking_state['frame_count'] += 1  # NEW FRAME
 
-        # if self.state == 0 and self.training == False:
-        #     self.association_threshold = 0.95
+        if self.state == 0 and self.training == False:
+            self.association_threshold = 0.90
 
         # LOAD CURRENT INFORMATION
         dets, pcbs, feats, cam_vecs, info, curr_gts, prev_gts = (
@@ -498,8 +498,10 @@ class TrackerNN(nn.Module):
             if K.shape[0] > 0:
                 # print(cos_met, K, mask)
                 loss = self.compute_masked_focal_loss(D_feat, K, mask)
-
-            D = mah_dist
+                D = K.detach().cpu().numpy()
+            else:
+                # D = mah_dist
+                D = D_module.detach().cpu().numpy()  
 
         if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
