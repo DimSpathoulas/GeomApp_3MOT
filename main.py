@@ -168,7 +168,7 @@ def track_nuscenes():
 
     Tracker = TrackerNN().to(device)
 
-    if not training or state > 0:
+    if not training:
         Tracker = load_tracker_states(Tracker, load_model_state)
 
     if state == 0:
