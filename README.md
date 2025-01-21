@@ -26,7 +26,7 @@ python covariance_matrix/cov_calc_centerpoint.py > covariance_matrix/centerpoint
 You can run the main code for all 3 learning multi-stages both in train and val mode. Note train mode in stages 1 and 2 will give as outputs both the resulting net .pth file and the .json tracking results ready for evaluation.
 To run our results:
 
-NOTE: CURRENTLY THERE IS A BUG ISSUE WITH G1, G3 STAGE
+NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 
 ### 5. Dimensionaly Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
