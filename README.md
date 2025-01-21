@@ -70,4 +70,3 @@ https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
 
 
 ## Notes
-The association threshold during validation should be adjusted to allow for user input.
