@@ -24,13 +24,16 @@ python covariance_matrix/cov_calc_centerpoint.py > covariance_matrix/centerpoint
 ```
 ### 4. Run main code
 You can run the main code for all 3 learning multi-stages. Note train mode in all stages will output both the resulting net .pth file and the .json tracking results ready for evaluation.
-To run our results:
+To get our results:
 
 NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 
 ### 5. Dimensionaly Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
-You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. Both will output a .pkl file.
+
+You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. 
+
+Both will output a .pkl file.
 You can use these transformation matrices for training the modules with whatever features dimensions desired.
 
 ### 6. Get Results
