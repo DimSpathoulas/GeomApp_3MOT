@@ -18,7 +18,7 @@ conda activate feature_tracking
 ```
 
 ### 3. Calculate covariance matrix
-I have hardcoded the results for the variances based on centerpoint detector in ```cov_centerpoint.py ```, but you can also run the results with:
+I have hardcoded the results for the variances based on centerpoint detector in ```cov_centerpoint.py ```, but you can also get the results with:
 ```bash
 python covariance_matrix/cov_calc_centerpoint.py > covariance_matrix/centerpoint_cov.txt
 ```
