@@ -31,7 +31,6 @@ NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 ### 5. Dimensionaly Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
 
-
 You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. Both will output a .pkl file.
 You can use these transformation matrices for training the modules with whatever features dimensions desired.
 
