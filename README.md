@@ -55,7 +55,7 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
        ├── svd.py            <-- run SVD on geometric features flattened
        ├── svd_per_point.py  <-- run SVD on geometric features per point
        ├── svd_cam.py        <-- run SVD on camera features
-       ├── svd_umap.py       <-- run svd and then vizualize features with umap
+       ├── svd_umap.py       <-- run SVD and vizualize features with umap
        ├── functions         <-- complementary modules
               ├── inner_funcs.py     <-- functions used for tracking
               ├── outer_funcs.py     <-- groundtruth retrieval and output customization
