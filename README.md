@@ -34,10 +34,10 @@ NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 ### 5. Dimensionality Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
 
-You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. 
+You can also run SVD on geometric features eith ```svd_per_point.py ``` for per point SVD or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. 
 
 Both will output a .pkl file.
-You can use these transformation matrices for training the modules with whatever features dimensions desired.
+You can use these transformation matrices for training the modules with whatever feature dimensions desired.
 
 ### 6. Get Results
 To get the tracking metric results run:
@@ -76,3 +76,4 @@ https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
 
 
 # Notes
+CURRENTLY ONLY G1,G2 STAGE IS FUNCTIONAL
