@@ -24,7 +24,10 @@ python covariance_matrix/cov_calc_centerpoint.py > covariance_matrix/centerpoint
 ```
 ### 4. Run main code
 You can run the main code for all 3 learning multi-stages. Note train mode in all stages will output both the resulting net .pth file and the .json tracking results ready for evaluation.
-To get our results:
+To train the G1, G2 models and get results:
+```bash
+python main.py --version v1.0-trainval -data_root /path --dets_train path/train_data.pkl --dets_val path/val_data.pkl --svd_lidar optional_path/svd_lidar.pkl --svd_cam optional_path/svd_cam.pkl --blender 0.55 --association_threshold 0.9 --state 0 --training True --load_model_state path_to_load/model.pth --save_model_state path_to_save/model.pth --output_path tracking_results_path/GeomApp_tracking_results.json
+```
 
 NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 
