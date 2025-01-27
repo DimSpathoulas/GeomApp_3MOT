@@ -197,27 +197,6 @@ def visualize_isomap_3d(name, pcds_all, fvs_all):
     plt.close()
 
 
-def visualize_tsne_3d(name, pcds_all, fvs_all):
-    tsne = TSNE(n_components=3, random_state=42)
-
-    pcds_tsne = tsne.fit_transform(pcds_all)
-    fvs_tsne = tsne.fit_transform(fvs_all)
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(pcds_tsne[:, 0], pcds_tsne[:, 1], pcds_tsne[:, 2], alpha=0.6)
-    ax.set_title(f'3D t-SNE of pcds for {name}')
-    plt.savefig(f'features/tsne/tsne_3d_pcds_{name}.png')
-    plt.close()
-
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-    ax.scatter(fvs_tsne[:, 0], fvs_tsne[:, 1], fvs_tsne[:, 2], alpha=0.6)
-    ax.set_title(f'3D t-SNE of fvs for {name}')
-    plt.savefig(f'features/tsne/tsne_3d_fvs_{name}.png')
-    plt.close()
-
-
 def visualize_lda_3d(pcds_all, fvs_all):
 
     all_labels = []
