@@ -31,7 +31,7 @@ python main.py --version v1.0-trainval -data_root /path --dets_train path/train_
 
 NOTE: CURRENTLY ONLY G1,G2 FUNCTION PROPERLY
 
-### 5. Dimensionaly Reduction
+### 5. Dimensionality Reduction
 You can vizualise the manifolds individually using ```manifolds.py ``` for multiple instances. This will create a directory named features storing the results in .png format.
 
 You can also run SVD on both geometric with ```svd_per_point.py ``` for per point SVD in point cloud features or ```svd.py ``` for first flattening and then applying SVD on them. Run```svd_cam.py``` for appearance features. 
