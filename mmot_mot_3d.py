@@ -500,8 +500,10 @@ class TrackerNN(nn.Module):
                 loss = self.compute_masked_focal_loss(D_feat, K, mask)
                 D = K.detach().cpu().numpy()
             else:
-                # D = mah_dist
-                D = D_feat.detach().cpu().numpy()  
+                D = mah_dist
+
+            if self.epoch <= 1:
+                D = mah_dist
 
         if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
@@ -527,12 +529,17 @@ class TrackerNN(nn.Module):
         matched_indices = greedy_match(D)
 
         # # RETRIEVE MATCHED AND UNMATCHED
+        if self.epoch <= 1:
+            asc_thr = 11
+        else:
+            asc_thr = self.association_threshold
+            
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(
             matched_indices,
             distance_matrix=D,
             dets=dets,
             trks=trks,
-            mahalanobis_threshold= self.association_threshold)  # change based on val or train !!!!!!!
+            mahalanobis_threshold= asc_thr)  # change based on val or train !!!!!!!
                                                                         
         # UPDATE MATCHED TRACKERS BASED ON PAIRED DETECTIONS
         for t, trk in enumerate(tracking_state['trackers']):
