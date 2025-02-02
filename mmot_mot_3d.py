@@ -501,9 +501,9 @@ class TrackerNN(nn.Module):
                 # D = K.detach().cpu().numpy()
             # else:
             #     D = mah_dist
-
-            if self.epoch <= 9:
-                D = mah_dist
+            D = mah_dist
+            # if self.epoch <= 9:
+            #     D = mah_dist
 
         if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
@@ -529,7 +529,7 @@ class TrackerNN(nn.Module):
         matched_indices = greedy_match(D)
 
         # # RETRIEVE MATCHED AND UNMATCHED
-        if self.epoch <= 9:
+        if self.training:
             asc_thr = 11
         else:
             asc_thr = self.association_threshold
