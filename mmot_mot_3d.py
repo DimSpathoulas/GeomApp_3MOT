@@ -498,11 +498,11 @@ class TrackerNN(nn.Module):
             if K.shape[0] > 0:
                 # print(cos_met, K, mask)
                 loss = self.compute_masked_focal_loss(D_feat, K, mask)
-                D = K.detach().cpu().numpy()
-            else:
-                D = mah_dist
+                # D = K.detach().cpu().numpy()
+            # else:
+            #     D = mah_dist
 
-            if self.epoch <= 1:
+            if self.epoch <= 9:
                 D = mah_dist
 
         if self.training == False and self.state == 0:
@@ -529,7 +529,7 @@ class TrackerNN(nn.Module):
         matched_indices = greedy_match(D)
 
         # # RETRIEVE MATCHED AND UNMATCHED
-        if self.epoch <= 1:
+        if self.epoch <= 9:
             asc_thr = 11
         else:
             asc_thr = self.association_threshold
