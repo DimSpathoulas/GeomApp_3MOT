@@ -77,3 +77,7 @@ https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
 
 # Notes
 CURRENTLY ONLY G1,G2 STAGE IS FUNCTIONAL
+
+
+# Contact Info
+Please feel free to contact me [dimispat1@pme.duth.gr](mailto:dimispat1@pme.duth.gr)
