@@ -75,9 +75,9 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
 https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
 
 
-# Notes
+## Notes
 CURRENTLY ONLY G1,G2 STAGE IS FUNCTIONAL
 
 
-# Contact Info
+## Contact Info
 Please feel free to contact me [dimispat1@pme.duth.gr](mailto:dimispat1@pme.duth.gr)
