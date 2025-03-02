@@ -135,7 +135,7 @@ class TrackerNN(nn.Module):
         cam_feats = cam_feats.view(cam_feats.shape[0], F3D.shape[1], F3D.shape[2], F3D.shape[3])
         
         # Fuse the normalized features
-        fused = cam_feats * 0.15 + lidar_feats * 0.85
+        fused = cam_feats * 0.25 + lidar_feats * 0.75
         
         # normalize the fused output again
         fused = torch.nn.functional.normalize(fused.view(fused.shape[0], -1), p=2, dim=1)
