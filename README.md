@@ -52,8 +52,8 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
 └── GEOMAPP_Feature_Tracking
        ├── main.py           <-- main code
        ├── main_2.py         <-- main code for running only G1,G4
-       ├── mmot_mot_3d.py    <-- backbone of main.py
-       ├── g1_g4.py          <-- backbone code of main_2.py
+       ├── mmot_mot_3d.py    <-- inner of main.py
+       ├── g1_g4.py          <-- inner of main_2.py
        ├── manifolds.py      <-- vizualise geometric features
        ├── svd.py            <-- run SVD on geometric features flattened
        ├── svd_per_point.py  <-- run SVD on geometric features per point
