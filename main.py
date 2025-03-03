@@ -137,11 +137,11 @@ def track_nuscenes():
     parser.add_argument('--training', type=str, default=False,
                         help='True or False not in ' '')
 
-    parser.add_argument('--load_model_state', type=str, default='blender_05_thresh_090.pth',
+    parser.add_argument('--load_model_state', type=str, default='blender_055_thresh_090.pth',
                         help='destination and name for model to load (for state == 0 leave as default)')
-    parser.add_argument('--save_model_state', type=str, default='blender_05_thresh_090.pth',
+    parser.add_argument('--save_model_state', type=str, default='blender_055_thresh_090.pth',
                         help='destination and name for model to save')
-    parser.add_argument('--output_path', type=str, default='blender_05_thresh_090.json',
+    parser.add_argument('--output_path', type=str, default='blender_055_thresh_090.json',
                         help='destination for tracking results')
 
     args = parser.parse_args()
