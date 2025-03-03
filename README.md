@@ -46,7 +46,7 @@ python evaluate_nuscenes.py --output_dir results tracking_output.json > results/
 ```
 
 
-## The Final Project directory
+## The Final Project Directory
 ```bash
 # Path_to_your_projects        
 └── GEOMAPP_Feature_Tracking
