@@ -455,8 +455,8 @@ def track_nuscenes():
             Tracker.clear_tracking_states()
 
 
-        print("Total learning took: %.3f for %d frames or %.1f FPS" % (
-            total_time, total_frames, total_frames / total_time))
+        # print("Total learning took: %.3f for %d frames or %.1f FPS" % (
+        #     total_time, total_frames, total_frames / total_time))
 
     #     writer.add_scalar('Loss/total', epoch_loss.item(), epoch)
 
