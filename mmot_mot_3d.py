@@ -507,7 +507,7 @@ class TrackerNN(nn.Module):
                     D = K.detach().cpu().numpy()
                     asc_thr = self.association_threshold
 
-       if self.training == False and self.state == 0:
+        if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
             asc_thr = self.association_threshold
 
