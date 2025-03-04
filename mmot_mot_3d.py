@@ -493,20 +493,23 @@ class TrackerNN(nn.Module):
         # IF WE TRAIN FOR D_FEAT
         # THERE IS NO VAL MODE IN STAGE 1 OF DC
         if self.training == True and self.state == 0:
+
+            D = mah_dist
+            asc_thr = 11
+            
             K, mask = self.construct_K_matrix(distance_matrix=D_feat, dets=dets, curr_gts=curr_gts, trks=trks,
                                             prev_gts=prev_gts, epoch=self.epoch)  
             if K.shape[0] > 0:
                 # print(cos_met, K, mask)
                 loss = self.compute_masked_focal_loss(D_feat, K, mask)
-                # D = K.detach().cpu().numpy()
-            # else:
-            #     D = mah_dist
-            D = mah_dist
-            # if self.epoch <= 9:
-            #     D = mah_dist
 
-        if self.training == False and self.state == 0:
+                if self.epoch >= 7:
+                    D = K.detach().cpu().numpy()
+                    asc_thr = self.association_threshold
+
+       if self.training == False and self.state == 0:
             D = D_feat.detach().cpu().numpy()
+            asc_thr = self.association_threshold
 
         # IF TRAIN AND WE TRAIN FOR COMBINATION STAGE 2
         if self.training == True and self.state == 1:
