@@ -289,7 +289,6 @@ if __name__ == '__main__':
     with open(detection_file, 'rb') as f:
         pred_boxes = pickle.load(f)
 
-    # gia ayth th malakia ua fame thn zoh mas mallon pali :)
     # pred_boxes, _ = load_prediction(detection_file, 10000, DetectionBox)
 
     # split_name = 'train'
@@ -305,9 +304,6 @@ if __name__ == '__main__':
 
     # for sample, sample_data in tqdm(pred_boxes.items()):
     #     scene_token = nusc.get('sample', sample)['scene_token']
-
-    #     if scene_token not in split_scenes_tokens:
-    #         print('im batman')
 
     # assert set(pred_boxes.sample_tokens) == set(gt_boxes.sample_tokens), \
     #     "Samples in split don't match samples in predicted tracks."
