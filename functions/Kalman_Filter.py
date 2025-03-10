@@ -1,9 +1,3 @@
-'''
-TO KALMAN FILTER (OPOS TO REPO)
-
-'''
-
-
 from __future__ import print_function
 from tqdm import tqdm
 import os.path
