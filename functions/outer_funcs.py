@@ -1,12 +1,3 @@
-'''
-EDO FTIAXNOYME TA GROUND TRUTHS X, Y, Z, , W, L, H, ANGLE, INSTANCE TOKEN
-INSTANCE TOKEN = MONADIKO GIA KATHE GT TRACK
-
-KAI TO FEATURE VECTOR TOY KATHE TRACK
-'''
-
-
-
 from __future__ import print_function
 from tqdm import tqdm
 import os.path
