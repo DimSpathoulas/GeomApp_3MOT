@@ -411,7 +411,7 @@ class TrackerNN(nn.Module):
                 n_non_matches = max((C == 0).sum(), 1)
                 pos_weight = ( n_non_matches/n_matches ).item()
                 focal_loss = FocalLoss_g4(pos_weight, gamma=2.0)
-                # loss_mar = compute_margin_loss(P[unmatched], C) ## add the los backkkk !!!!!!!!!!!
+                # loss_mar = compute_margin_loss(P[unmatched], C) ## add the los back !!!!!!!!!!!
                 loss = focal_loss(P[unmatched], C)
                 loss = loss
 
