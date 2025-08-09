@@ -1,7 +1,7 @@
 # Feature based 3D Multi-modal Multi-object Tracking for Autonomous Navigation
 Part of my master thesis: **3D Multi-Modal Multi-Object Tracking via Machine Learning and Analytic Collision Risk Calculation for Autonomous Vehicles Navigation.**
 ## Overview
-This is the main module. You can check my short description in the ```Report``` folder.
+This is the main module. You can check a brief description in the ```Report``` folder.
 
 ## Instructions
 ### 1. Extract Features
