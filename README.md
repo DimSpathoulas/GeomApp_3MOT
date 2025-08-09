@@ -75,7 +75,7 @@ https://github.com/eddyhkchiu/mahalanobis_3d_multi_object_tracking
 
 
 ## Notes
-CURRENTLY ONLY G1,G2 STAGE IS FUNCTIONAL
+CURRENTLY ONLY G1,G2 STAGE IS STABLE
 
 
 ## Contact Info
